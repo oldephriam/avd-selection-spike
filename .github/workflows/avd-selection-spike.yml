@@ -74,10 +74,27 @@ jobs:
           sudo chgrp kvm /dev/kvm
           sudo chmod 0660 /dev/kvm
           stat -c 'KVM after scoped access setup: owner=%U group=%G mode=%a path=%n' /dev/kvm
-          sudo -u "$RUNNER_USER" test -r /dev/kvm
-          sudo -u "$RUNNER_USER" test -w /dev/kvm
-          sudo -u pacer-avd test -r /dev/kvm
-          sudo -u pacer-avd test -w /dev/kvm
+          getent group kvm
+          id -nG "$RUNNER_USER"
+          id -nG pacer-avd
+          sudo -u "$RUNNER_USER" -g kvm -- id
+          sudo -u pacer-avd -g pacer-avd -G kvm -- id
+          if ! sudo -u "$RUNNER_USER" -g kvm -- test -r /dev/kvm; then
+            echo 'Runner account cannot read /dev/kvm using the kvm group.' >&2
+            exit 1
+          fi
+          if ! sudo -u "$RUNNER_USER" -g kvm -- test -w /dev/kvm; then
+            echo 'Runner account cannot write /dev/kvm using the kvm group.' >&2
+            exit 1
+          fi
+          if ! sudo -u pacer-avd -g pacer-avd -G kvm -- test -r /dev/kvm; then
+            echo 'pacer-avd cannot read /dev/kvm using the kvm group.' >&2
+            exit 1
+          fi
+          if ! sudo -u pacer-avd -g pacer-avd -G kvm -- test -w /dev/kvm; then
+            echo 'pacer-avd cannot write /dev/kvm using the kvm group.' >&2
+            exit 1
+          fi
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -129,14 +146,14 @@ jobs:
         run: |
           set -euo pipefail
           sudo install -d -o pacer-avd -g pacer-avd "$AVD_HOME/.android/avd"
-          sudo -u pacer-avd test -r /dev/kvm
-          sudo -u pacer-avd test -w /dev/kvm
-          sudo -u pacer-avd test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/avdmanager"
-          sudo -u pacer-avd test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
-          sudo -u pacer-avd test -x "$ANDROID_SDK_ROOT/emulator/emulator"
-          sudo -u pacer-avd env ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" ANDROID_USER_HOME="$AVD_HOME/.android" AVD_NAME="$AVD_NAME" SYSTEM_IMAGE="$SYSTEM_IMAGE" \
+          sudo -u pacer-avd -g pacer-avd -G kvm test -r /dev/kvm
+          sudo -u pacer-avd -g pacer-avd -G kvm test -w /dev/kvm
+          sudo -u pacer-avd -g pacer-avd -G kvm test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/avdmanager"
+          sudo -u pacer-avd -g pacer-avd -G kvm test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
+          sudo -u pacer-avd -g pacer-avd -G kvm test -x "$ANDROID_SDK_ROOT/emulator/emulator"
+          sudo -u pacer-avd -g pacer-avd -G kvm -H env ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" ANDROID_USER_HOME="$AVD_HOME/.android" AVD_NAME="$AVD_NAME" SYSTEM_IMAGE="$SYSTEM_IMAGE" \
             bash -c 'echo no | "$ANDROID_HOME/cmdline-tools/16.0/bin/avdmanager" create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE" --device pixel_2'
-          sudo -u pacer-avd env ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" ANDROID_USER_HOME="$AVD_HOME/.android" \
+          sudo -u pacer-avd -g pacer-avd -G kvm -H env ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" ANDROID_USER_HOME="$AVD_HOME/.android" \
             "$ANDROID_SDK_ROOT/emulator/emulator" -accel-check
 
       - name: Block emulator-account host egress without affecting the runner
@@ -158,7 +175,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/avd-logs"
           adb start-server
-          sudo -u pacer-avd -H env ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" ANDROID_USER_HOME="$AVD_HOME/.android" ADB_SERVER_SOCKET=tcp:127.0.0.1:5037 \
+          sudo -u pacer-avd -g pacer-avd -G kvm -H env ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" ANDROID_USER_HOME="$AVD_HOME/.android" ADB_SERVER_SOCKET=tcp:127.0.0.1:5037 \
             nohup "$ANDROID_SDK_ROOT/emulator/emulator" -avd "$AVD_NAME" -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect -accel on \
             >"$RUNNER_TEMP/avd-logs/emulator.log" 2>&1 &
           ready=0
