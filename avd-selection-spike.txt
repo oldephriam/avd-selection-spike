@@ -1,0 +1,247 @@
+name: AOSP Android 35 selection-only AVD spike
+
+on:
+  workflow_dispatch:
+    inputs:
+      pin_mode:
+        description: Discover the AOSP picker pin once, then set repository variables and run verify
+        type: choice
+        options:
+          - verify
+          - discover
+        default: discover
+        required: true
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'src/campaign/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - '.github/workflows/avd-selection-spike.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'src/campaign/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - '.github/workflows/avd-selection-spike.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aosp-avd-selection-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  avd-selection:
+    name: AOSP API 35 / x86_64 selection probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SYSTEM_IMAGE: system-images;android-35;default;x86_64
+      AVD_NAME: pacer-api35-aosp-x86_64
+      AVD_HOME: /home/pacer-avd
+      ANDROID_SDK_ROOT: /home/runner/.android/sdk
+      ANDROID_HOME: /home/runner/.android/sdk
+      PIN_MODE: ${{ github.event.inputs.pin_mode || 'verify' }}
+      AOSP_35_BUILD_FINGERPRINT: ${{ vars.AOSP_35_BUILD_FINGERPRINT }}
+      AOSP_CONTACTS_VERSION_NAME: ${{ vars.AOSP_CONTACTS_VERSION_NAME }}
+      AOSP_CONTACTS_VERSION_CODE: ${{ vars.AOSP_CONTACTS_VERSION_CODE }}
+      AOSP_CONTACTS_CERT_SHA256: ${{ vars.AOSP_CONTACTS_CERT_SHA256 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require KVM before provisioning
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm || { echo 'Required /dev/kvm device is unavailable.' >&2; exit 1; }
+          stat -c 'KVM before access setup: owner=%U group=%G mode=%a path=%n' /dev/kvm
+          getent group kvm >/dev/null || { echo 'KVM group is unavailable.' >&2; exit 1; }
+          RUNNER_USER="$(id -un)"
+          if ! getent group pacer-avd >/dev/null; then
+            sudo groupadd --system pacer-avd
+          fi
+          if ! id -u pacer-avd >/dev/null 2>&1; then
+            sudo useradd --system --create-home --home-dir "$AVD_HOME" --shell /usr/sbin/nologin --gid pacer-avd pacer-avd
+          fi
+          sudo chgrp kvm /dev/kvm
+          sudo chmod 0666 /dev/kvm
+          stat -c 'KVM after access setup: owner=%U group=%G mode=%a path=%n' /dev/kvm
+          id -nG "$RUNNER_USER"
+          id -nG pacer-avd
+          sudo -u "$RUNNER_USER" id
+          sudo -u pacer-avd id
+          if ! sudo -u "$RUNNER_USER" test -r /dev/kvm; then
+            echo 'Runner account cannot read /dev/kvm.' >&2
+            exit 1
+          fi
+          if ! sudo -u "$RUNNER_USER" test -w /dev/kvm; then
+            echo 'Runner account cannot write /dev/kvm.' >&2
+            exit 1
+          fi
+          if ! sudo -u pacer-avd test -r /dev/kvm; then
+            echo 'pacer-avd cannot read /dev/kvm.' >&2
+            exit 1
+          fi
+          if ! sudo -u pacer-avd test -w /dev/kvm; then
+            echo 'pacer-avd cannot write /dev/kvm.' >&2
+            exit 1
+          fi
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Provision Android command-line SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '12266719'
+          packages: platform-tools
+
+      - name: Install pinned API 35 AOSP CLI packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ANDROID_SDK_ROOT"
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses < <(yes)
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --install \
+            'platform-tools' \
+            'platforms;android-35' \
+            'build-tools;35.0.0' \
+            'emulator' \
+            "$SYSTEM_IMAGE"
+          test -x "$ANDROID_SDK_ROOT/emulator/emulator"
+          test -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
+
+      - name: Make Android SDK tools executable and directories traversable
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo chmod -R a+rx "$ANDROID_SDK_ROOT"
+          for directory in /home /home/runner /home/runner/.android "$ANDROID_SDK_ROOT"; do
+            sudo chmod a+rx "$directory"
+          done
+          test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/avdmanager"
+          test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
+          test -x "$ANDROID_SDK_ROOT/emulator/emulator"
+          test -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
+
+      - name: Create the isolated emulator account and AOSP AVD
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo install -d -o pacer-avd -g pacer-avd "$AVD_HOME/.android/avd"
+          sudo -u pacer-avd test -r /dev/kvm
+          sudo -u pacer-avd test -w /dev/kvm
+          sudo -u pacer-avd test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/avdmanager"
+          sudo -u pacer-avd test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
+          sudo -u pacer-avd test -x "$ANDROID_SDK_ROOT/emulator/emulator"
+          sudo -u pacer-avd env HOME="$AVD_HOME" ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" ANDROID_USER_HOME="$AVD_HOME/.android" AVD_NAME="$AVD_NAME" SYSTEM_IMAGE="$SYSTEM_IMAGE" \
+            bash -c 'echo no | "$ANDROID_HOME/cmdline-tools/16.0/bin/avdmanager" create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE" --device pixel_2'
+          sudo -u pacer-avd env HOME="$AVD_HOME" ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" ANDROID_USER_HOME="$AVD_HOME/.android" \
+            "$ANDROID_SDK_ROOT/emulator/emulator" -accel-check
+
+      - name: Block emulator-account host egress without affecting the runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          AVD_UID="$(id -u pacer-avd)"
+          sudo iptables -w -I OUTPUT 1 -m owner --uid-owner "$AVD_UID" ! -o lo -j REJECT
+          sudo ip6tables -w -I OUTPUT 1 -m owner --uid-owner "$AVD_UID" ! -o lo -j REJECT
+          sudo iptables -w -C OUTPUT -m owner --uid-owner "$AVD_UID" ! -o lo -j REJECT
+          sudo ip6tables -w -C OUTPUT -m owner --uid-owner "$AVD_UID" ! -o lo -j REJECT
+          # Verify that the dedicated UID cannot establish external TCP connections.
+          sudo -u pacer-avd python3 -c 'import socket; s=socket.socket(); s.settimeout(2); rc=s.connect_ex(("1.1.1.1",443)); s.close(); raise SystemExit(1 if rc == 0 else 0)'
+          echo 'Verified: only the dedicated emulator UID is blocked from non-loopback egress.'
+
+      - name: Boot headless AOSP API 35 emulator on console port 5554
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/avd-logs"
+          adb start-server
+          sudo -u pacer-avd env HOME="$AVD_HOME" ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" ANDROID_USER_HOME="$AVD_HOME/.android" ADB_SERVER_SOCKET=tcp:127.0.0.1:5037 \
+            nohup "$ANDROID_SDK_ROOT/emulator/emulator" -avd "$AVD_NAME" -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect -accel on \
+            >"$RUNNER_TEMP/avd-logs/emulator.log" 2>&1 &
+          ready=0
+          for attempt in $(seq 1 180); do
+            if adb -s emulator-5554 get-state >/dev/null 2>&1; then
+              booted="$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null || true)"
+              if [[ "$booted" == "1" ]]; then ready=1; break; fi
+            fi
+            sleep 5
+          done
+          if [[ "$ready" != 1 ]]; then
+            echo 'Emulator did not reach sys.boot_completed=1 within 15 minutes.' >&2
+            cat "$RUNNER_TEMP/avd-logs/emulator.log" >&2 || true
+            exit 1
+          fi
+          python3 - <<'PY'
+          import subprocess
+          output = subprocess.check_output(["adb", "devices", "-l"], text=True)
+          rows = [line.split() for line in output.splitlines()[1:] if len(line.split()) >= 2]
+          if len(rows) != 1 or rows[0][0] != "emulator-5554" or rows[0][1] != "device":
+              raise SystemExit("ADB device set is not exactly emulator-5554 in device state")
+          PY
+          adb -s emulator-5554 shell input keyevent 82
+
+      - name: Inspect and pin exact AOSP picker identity before build
+        id: picker
+        shell: bash
+        run: |
+          set -euo pipefail
+          AOSP_PICKER_PIN_FILE="$RUNNER_TEMP/avd-logs/aosp-picker-identity.json"
+          echo "AOSP_PICKER_PIN_FILE=$AOSP_PICKER_PIN_FILE" >> "$GITHUB_ENV"
+          mkdir -p "$(dirname "$AOSP_PICKER_PIN_FILE")"
+          python3 scripts/pin_aosp_picker.py \
+            --adb "$ANDROID_SDK_ROOT/platform-tools/adb" \
+            --apksigner "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" \
+            --output "$AOSP_PICKER_PIN_FILE" \
+            --mode "$PIN_MODE"
+          if [[ "$PIN_MODE" == discover || -z "$AOSP_35_BUILD_FINGERPRINT" || -z "$AOSP_CONTACTS_VERSION_NAME" || -z "$AOSP_CONTACTS_VERSION_CODE" || -z "$AOSP_CONTACTS_CERT_SHA256" ]]; then
+            echo 'Discovery only: copy the four AOSP_* values from the pin artifact/log to Actions Variables. Check pickerIntentResolverOutput before using them; verify mode will fail closed unless com.android.contacts resolves the phone picker.'
+          fi
+
+      - name: Set up Gradle 8.9
+        if: steps.picker.outputs.verified == 'true'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build probe and seeder APKs
+        if: steps.picker.outputs.verified == 'true'
+        shell: bash
+        run: gradle --no-daemon -p android :probe:assembleDebug :seeder:assembleDebug
+
+      - name: Run offline regression suite
+        if: steps.picker.outputs.verified == 'true'
+        shell: bash
+        run: python -m unittest discover -s tests -v
+
+      - name: Run live synthetic-contact selection probe
+        if: steps.picker.outputs.verified == 'true'
+        shell: bash
+        run: python scripts/run_live_avd_selection.py
+
+      - name: Upload picker pin and emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aosp-api35-selection-avd-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/avd-logs/aosp-picker-identity.json
+            ${{ runner.temp }}/avd-logs/emulator.log
+          if-no-files-found: ignore
+          retention-days: 14

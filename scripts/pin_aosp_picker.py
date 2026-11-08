@@ -7,10 +7,32 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import tempfile
+from collections.abc import Mapping
 
 SERIAL = "emulator-5554"
 PACKAGE = "com.android.contacts"
 SYSTEM_IMAGE = "system-images;android-35;default;x86_64"
+PIN_VARIABLE_TO_IDENTITY_FIELD = {
+    "AOSP_35_BUILD_FINGERPRINT": "buildFingerprint",
+    "AOSP_CONTACTS_VERSION_NAME": "pickerVersionName",
+    "AOSP_CONTACTS_VERSION_CODE": "pickerVersionCode",
+    "AOSP_CONTACTS_CERT_SHA256": "pickerCertificateSha256",
+}
+
+
+def missing_pin_variables(environ: Mapping[str, str]) -> list[str]:
+    return [name for name in PIN_VARIABLE_TO_IDENTITY_FIELD if not environ.get(name, "").strip()]
+
+
+def pin_variable_values(identity: Mapping[str, str]) -> dict[str, str]:
+    return {name: identity[field] for name, field in PIN_VARIABLE_TO_IDENTITY_FIELD.items()}
+
+
+def picker_intent_matches(resolver_output: str, package: str = PACKAGE) -> bool:
+    return any(
+        "/" in line.strip() and line.strip().startswith(package + "/")
+        for line in resolver_output.splitlines()
+    )
 
 
 def run(args: list[str], *, text: bool = True, timeout: int = 30) -> str | bytes:
@@ -72,9 +94,8 @@ def discover(adb_path: str, apksigner_path: str) -> dict[str, str]:
         adb_path, "shell", "cmd", "package", "resolve-activity", "--brief",
         "-a", "android.intent.action.PICK", "-d", "content://com.android.contacts/data/phones",
     ))
-    resolved = next((line.strip() for line in resolver.splitlines() if "/" in line and PACKAGE in line), "")
-    if not resolved.startswith(PACKAGE + "/"):
-        raise RuntimeError("phone contact-picker intent does not resolve to com.android.contacts")
+    resolved = next((line.strip() for line in resolver.splitlines()
+                     if line.strip().startswith(PACKAGE + "/")), "")
 
     installed = str(adb(adb_path, "shell", "pm", "list", "packages"))
     forbidden = ("com.google.android.gms", "com.google.android.gsf", "com.google.android.play.games", "com.android.vending")
@@ -92,6 +113,8 @@ def discover(adb_path: str, apksigner_path: str) -> dict[str, str]:
         "pickerVersion": f"{version_name.group(1)}:{version_code.group(1)}",
         "pickerCertificateSha256": certificate,
         "resolvedPickerActivity": resolved,
+        "pickerIntentResolverOutput": resolver.strip(),
+        "pickerIntentMatchesPackage": picker_intent_matches(resolver),
         "serial": SERIAL,
     }
 
@@ -107,20 +130,36 @@ def main() -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        missing = missing_pin_variables(os.environ)
+        discovery_only = args.mode == "discover" or bool(missing)
         identity = discover(args.adb, args.apksigner)
         output.write_text(json.dumps(identity, indent=2) + "\n", encoding="utf-8")
-        if args.mode == "discover":
-            print("Picker identity discovered and written to the workflow artifact; verification/build intentionally skipped.")
+
+        values = pin_variable_values(identity)
+        if discovery_only:
+            print("Discovered repository-variable values (copy these to Actions Variables):")
+            for name, value in values.items():
+                print(f"{name}={value}")
+            if missing:
+                print("PIN_DISCOVERY_REQUIRED: missing repository variables: " + ", ".join(missing))
+            if not identity["pickerIntentMatchesPackage"]:
+                print(
+                    "WARNING: the observed phone PICK intent does not resolve to com.android.contacts; "
+                    "resolver output is included in the pin JSON artifact. Do not treat these values as a verified picker pin yet."
+                )
+            print("Identity JSON written to the workflow artifact; build and live probe are skipped.")
             verified = False
         else:
+            if not identity["pickerIntentMatchesPackage"]:
+                raise RuntimeError(
+                    "phone contact-picker intent does not resolve to com.android.contacts; "
+                    f"resolver output: {identity['pickerIntentResolverOutput']!r}"
+                )
             expected = {
-                "buildFingerprint": os.environ.get("AOSP_35_BUILD_FINGERPRINT", "").strip(),
-                "pickerVersionName": os.environ.get("AOSP_CONTACTS_VERSION_NAME", "").strip(),
-                "pickerVersionCode": os.environ.get("AOSP_CONTACTS_VERSION_CODE", "").strip(),
-                "pickerCertificateSha256": os.environ.get("AOSP_CONTACTS_CERT_SHA256", "").strip().lower(),
+                field: os.environ.get(name, "").strip()
+                for name, field in PIN_VARIABLE_TO_IDENTITY_FIELD.items()
             }
-            if any(not value for value in expected.values()):
-                raise RuntimeError("repository pin variables are incomplete; run discover, set pins, then verify")
+            expected["pickerCertificateSha256"] = expected["pickerCertificateSha256"].lower()
             if any(identity[key] != value for key, value in expected.items()):
                 raise RuntimeError("observed AOSP build/picker identity differs from configured repository pins")
             verified = True
@@ -130,6 +169,7 @@ def main() -> int:
         if github_output:
             with open(github_output, "a", encoding="utf-8") as stream:
                 stream.write(f"verified={'true' if verified else 'false'}\n")
+                stream.write(f"discovery_required={'true' if discovery_only else 'false'}\n")
         if verified:
             env_path = os.environ.get("GITHUB_ENV")
             if env_path:
@@ -144,6 +184,7 @@ def main() -> int:
         if github_output:
             with open(github_output, "a", encoding="utf-8") as stream:
                 stream.write("verified=false\n")
+                stream.write("discovery_required=false\n")
         return 1
 
 
