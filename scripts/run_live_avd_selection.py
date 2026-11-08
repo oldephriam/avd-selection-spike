@@ -36,8 +36,8 @@ class AVD:
         self.adb_path = adb
         self._dump_counter = 0
 
-    def command(self, *args: str, text: bool = True) -> str | bytes:
-        return run([self.adb_path, "-s", SERIAL, *args], text=text)
+    def command(self, *args: str, text: bool = True, timeout: int = 30) -> str | bytes:
+        return run([self.adb_path, "-s", SERIAL, *args], text=text, timeout=timeout)
 
     def foreground(self) -> str:
         report = str(self.command("shell", "dumpsys", "activity", "activities"))
