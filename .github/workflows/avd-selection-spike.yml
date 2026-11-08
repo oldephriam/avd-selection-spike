@@ -69,30 +69,27 @@ jobs:
           if ! id -u pacer-avd >/dev/null 2>&1; then
             sudo useradd --system --create-home --home-dir "$AVD_HOME" --shell /usr/sbin/nologin --gid pacer-avd pacer-avd
           fi
-          sudo usermod -aG kvm "$RUNNER_USER"
-          sudo usermod -aG kvm pacer-avd
           sudo chgrp kvm /dev/kvm
-          sudo chmod 0660 /dev/kvm
-          stat -c 'KVM after scoped access setup: owner=%U group=%G mode=%a path=%n' /dev/kvm
-          getent group kvm
+          sudo chmod 0666 /dev/kvm
+          stat -c 'KVM after access setup: owner=%U group=%G mode=%a path=%n' /dev/kvm
           id -nG "$RUNNER_USER"
           id -nG pacer-avd
           sudo -u "$RUNNER_USER" id
           sudo -u pacer-avd id
-          if ! sg kvm -c 'test -r /dev/kvm'; then
-            echo 'Runner account cannot read /dev/kvm using the kvm group.' >&2
+          if ! sudo -u "$RUNNER_USER" test -r /dev/kvm; then
+            echo 'Runner account cannot read /dev/kvm.' >&2
             exit 1
           fi
-          if ! sg kvm -c 'test -w /dev/kvm'; then
-            echo 'Runner account cannot write /dev/kvm using the kvm group.' >&2
+          if ! sudo -u "$RUNNER_USER" test -w /dev/kvm; then
+            echo 'Runner account cannot write /dev/kvm.' >&2
             exit 1
           fi
           if ! sudo -u pacer-avd test -r /dev/kvm; then
-            echo 'pacer-avd cannot read /dev/kvm using its kvm supplementary group.' >&2
+            echo 'pacer-avd cannot read /dev/kvm.' >&2
             exit 1
           fi
           if ! sudo -u pacer-avd test -w /dev/kvm; then
-            echo 'pacer-avd cannot write /dev/kvm using its kvm supplementary group.' >&2
+            echo 'pacer-avd cannot write /dev/kvm.' >&2
             exit 1
           fi
 
