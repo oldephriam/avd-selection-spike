@@ -173,8 +173,6 @@ def fixture_visible_in_provider(avd: AVD) -> bool:
     output = str(avd.command(
         "shell", "content", "query",
         "--uri", "content://com.android.contacts/data/phones",
-        "--projection", "display_name:data1",
-        "--where", f"display_name='{binding.display_name}'",
     ))
     return binding.display_name in output and phone.group(1) in output
 
@@ -191,8 +189,6 @@ def wait_for_fixture_provider_visibility(avd: AVD, timeout_seconds: int = 15) ->
         last_output = str(avd.command(
             "shell", "content", "query",
             "--uri", "content://com.android.contacts/data/phones",
-            "--projection", "display_name:data1",
-            "--where", f"display_name='{binding.display_name}'",
         ))
         if binding.display_name in last_output and phone.group(1) in last_output:
             return
