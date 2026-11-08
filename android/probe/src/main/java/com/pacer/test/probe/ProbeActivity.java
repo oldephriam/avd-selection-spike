@@ -1,0 +1,132 @@
+package com.pacer.test.probe;
+
+import android.app.Activity;
+import android.content.ContentResolver;
+import android.content.Intent;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Bundle;
+import android.provider.ContactsContract;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+public final class ProbeActivity extends Activity {
+    private static final int PICK_CONTACT_REQUEST = 41;
+
+    private TextView readback;
+    private Button pickerButton;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        int padding = (int) (24 * getResources().getDisplayMetrics().density);
+        root.setPadding(padding, padding, padding, padding);
+
+        TextView instructions = new TextView(this);
+        instructions.setText("Selection-only test. Choose exactly one synthetic contact.");
+        root.addView(instructions, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        pickerButton = new Button(this);
+        pickerButton.setText("Choose one contact");
+        pickerButton.setOnClickListener(view -> launchContactPicker());
+        root.addView(pickerButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        readback = new TextView(this);
+        readback.setText("UNVERIFIED: no contact selected");
+        readback.setContentDescription("selection_readback");
+        readback.setImportantForAccessibility(TextView.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        readback.setTextIsSelectable(true);
+        root.addView(readback, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        setContentView(root);
+    }
+
+    private void launchContactPicker() {
+        Intent picker = new Intent(
+                Intent.ACTION_PICK,
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI);
+        showReadback("UNVERIFIED: awaiting new picker result");
+        try {
+            pickerButton.setEnabled(false);
+            startActivityForResult(picker, PICK_CONTACT_REQUEST);
+        } catch (RuntimeException error) {
+            pickerButton.setEnabled(true);
+            showReadback("UNVERIFIED: platform contact picker unavailable");
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PICK_CONTACT_REQUEST) {
+            return;
+        }
+        pickerButton.setEnabled(true);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            showReadback("UNVERIFIED: picker returned no selected contact");
+            return;
+        }
+        readSelectedPhoneRow(data.getData());
+    }
+
+    private void readSelectedPhoneRow(Uri selectedUri) {
+        String[] projection = {
+                ContactsContract.CommonDataKinds.Phone._ID,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER
+        };
+        try (Cursor cursor = getContentResolver().query(selectedUri, projection, null, null, null)) {
+            if (cursor == null || !cursor.moveToFirst()) {
+                showReadback("UNVERIFIED: selected row could not be read");
+                return;
+            }
+            int idColumn = cursor.getColumnIndexOrThrow(
+                    ContactsContract.CommonDataKinds.Phone._ID);
+            int nameColumn = cursor.getColumnIndexOrThrow(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
+            int numberColumn = cursor.getColumnIndexOrThrow(
+                    ContactsContract.CommonDataKinds.Phone.NUMBER);
+            String rowId = cursor.getString(idColumn);
+            String displayName = cursor.getString(nameColumn);
+            String number = cursor.getString(numberColumn);
+            String key = normalizeUsNumber(number);
+            if (rowId == null || displayName == null || key == null) {
+                showReadback("UNVERIFIED: selected row lacks complete identity data");
+                return;
+            }
+            showReadback("BOUND CANDIDATE\ncontact_row_id=" + rowId
+                    + "\ndisplay_name=" + displayName
+                    + "\nrecipient_key=" + key);
+        } catch (SecurityException | IllegalArgumentException error) {
+            showReadback("UNVERIFIED: picker did not grant readable selection evidence");
+        }
+    }
+
+    private static String normalizeUsNumber(String value) {
+        if (value == null) {
+            return null;
+        }
+        String digits = value.replaceAll("\\D", "");
+        if (digits.length() == 11 && digits.startsWith("1")) {
+            digits = digits.substring(1);
+        }
+        if (digits.length() != 10 || digits.charAt(0) == '0' || digits.charAt(0) == '1'
+                || digits.charAt(3) == '0' || digits.charAt(3) == '1') {
+            return null;
+        }
+        return "+1" + digits;
+    }
+
+    private void showReadback(String text) {
+        readback.setText(text);
+        readback.setContentDescription("selection_readback: " + text);
+    }
+}

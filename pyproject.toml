@@ -1,0 +1,9 @@
+[project]
+name = "offline-campaign-prototype"
+version = "0.1.0"
+description = "Non-sending, fault-injected campaign state-machine prototype"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.unittest]
+test-discovery = "tests"
