@@ -63,7 +63,11 @@ class AVD:
         parents = {child: parent for parent in root.iter() for child in parent}
         matches = []
         for node in root.iter():
-            if label not in {node.attrib.get("text", "").strip(), node.attrib.get("content-desc", "").strip()}:
+            values = {
+                node.attrib.get("text", "").strip().casefold(),
+                node.attrib.get("content-desc", "").strip().casefold(),
+            }
+            if label.strip().casefold() not in values:
                 continue
             if node.attrib.get("visible-to-user") == "false" or node.attrib.get("enabled") == "false":
                 continue

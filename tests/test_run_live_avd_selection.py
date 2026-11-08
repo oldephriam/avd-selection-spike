@@ -24,6 +24,15 @@ class LiveAvdCommandTests(unittest.TestCase):
             text=True,
             timeout=120,
         )
+    def test_button_bounds_recognizes_android_all_caps_button_text(self) -> None:
+        hierarchy = (
+            b'<hierarchy><node text="SEED SYNTHETIC CONTACT" clickable="true" '
+            b'enabled="true" visible-to-user="true" bounds="[10,20][210,80]"/></hierarchy>'
+        )
+
+        bounds = live.AVD("adb")._button_bounds(hierarchy, "Seed synthetic contact")
+
+        self.assertEqual(bounds, (10, 20, 210, 80))
 
 
 if __name__ == "__main__":
