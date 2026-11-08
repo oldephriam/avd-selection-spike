@@ -70,6 +70,7 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn("verifyFixtureVisible();", source)
         self.assertIn("ContactsContract.CommonDataKinds.Phone.CONTENT_URI", source)
         self.assertIn("Contacts provider did not expose the committed phone row", source)
+        self.assertIn("fixture insertion was rolled back: " + '" + error.getMessage()', source)
         self.assertIn("ContentResolver", source)
         self.assertNotIn("INTERNET", source)
         self.assertNotIn("SEND_SMS", source)

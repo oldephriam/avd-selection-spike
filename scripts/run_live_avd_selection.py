@@ -114,19 +114,23 @@ class AVD:
 
     def wait_for_text(self, phrase: str, timeout_seconds: int = 60) -> None:
         deadline = time.monotonic() + timeout_seconds
+        last_values = ""
         while time.monotonic() < deadline:
             try:
                 xml = ET.fromstring(self.hierarchy())
-                values = " ".join(
+                last_values = " ".join(
                     " ".join((node.attrib.get("text", ""), node.attrib.get("content-desc", "")))
                     for node in xml.iter()
                 )
-                if phrase in values:
+                if phrase in last_values:
                     return
-            except (ET.ParseError, RuntimeError):
-                pass
+            except (ET.ParseError, RuntimeError) as exc:
+                last_values = f"hierarchy unavailable: {type(exc).__name__}"
             time.sleep(1)
-        raise RuntimeError("expected activity status did not appear before the bounded deadline")
+        raise RuntimeError(
+            f"expected activity status did not appear before the bounded deadline; "
+            f"observed accessibility text={last_values[:500]!r}"
+        )
 
 
 def module_version(module: str) -> str:

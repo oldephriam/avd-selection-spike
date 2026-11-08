@@ -122,7 +122,7 @@ public final class SeederActivity extends Activity {
             if (rawUri != null) {
                 getContentResolver().delete(rawUri, null, null);
             }
-            setStatus("FAILED: fixture insertion was rolled back");
+            setStatus("FAILED: fixture insertion was rolled back: " + error.getMessage());
         }
     }
 
