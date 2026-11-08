@@ -91,11 +91,13 @@ def discover(adb_path: str, apksigner_path: str) -> dict[str, str]:
     if not re.fullmatch(r"[0-9a-f]{64}", certificate):
         raise RuntimeError("picker signing certificate digest is malformed")
 
-    phone_mime_type = str(adb(
+    type_output = str(adb(
         adb_path, "shell", "content", "gettype", "--uri", PHONE_PICK_URI,
     )).strip()
-    if not re.fullmatch(r"[A-Za-z0-9.+_-]+/[A-Za-z0-9.+_-]+", phone_mime_type):
-        raise RuntimeError("phone contacts provider returned a missing or malformed MIME type")
+    type_match = re.fullmatch(r"Result:\s*([A-Za-z0-9.+_-]+/[A-Za-z0-9.+_-]+)", type_output)
+    if not type_match:
+        raise RuntimeError(f"phone contacts provider returned unexpected MIME query output: {type_output!r}")
+    phone_mime_type = type_match.group(1)
 
     resolver = str(adb(
         adb_path, "shell", "cmd", "package", "resolve-activity", "--brief",

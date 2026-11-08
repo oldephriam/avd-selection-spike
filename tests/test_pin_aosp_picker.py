@@ -71,7 +71,7 @@ class PinAospPickerTests(unittest.TestCase):
         adb_outputs = [
             "aosp/fingerprint", "35", "x86_64", "package:com.android.contacts",
             "Package [com.android.contacts] versionName=2.0 versionCode=35",
-            "package:/data/app/com.android.contacts/base.apk", "", mime_type,
+            "package:/data/app/com.android.contacts/base.apk", "", f"Result: {mime_type}\n",
             "com.android.contacts/.activities.ContactSelectionActivity", "package:com.android.contacts\n",
         ]
         with patch("scripts.pin_aosp_picker.adb", side_effect=adb_outputs) as adb_mock, \
