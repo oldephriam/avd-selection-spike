@@ -12,6 +12,7 @@ from collections.abc import Mapping
 SERIAL = "emulator-5554"
 PACKAGE = "com.android.contacts"
 SYSTEM_IMAGE = "system-images;android-35;default;x86_64"
+PHONE_PICK_URI = "content://com.android.contacts/data/phones"
 PIN_VARIABLE_TO_IDENTITY_FIELD = {
     "AOSP_35_BUILD_FINGERPRINT": "buildFingerprint",
     "AOSP_CONTACTS_VERSION_NAME": "pickerVersionName",
@@ -90,9 +91,15 @@ def discover(adb_path: str, apksigner_path: str) -> dict[str, str]:
     if not re.fullmatch(r"[0-9a-f]{64}", certificate):
         raise RuntimeError("picker signing certificate digest is malformed")
 
+    phone_mime_type = str(adb(
+        adb_path, "shell", "content", "gettype", "--uri", PHONE_PICK_URI,
+    )).strip()
+    if not re.fullmatch(r"[A-Za-z0-9.+_-]+/[A-Za-z0-9.+_-]+", phone_mime_type):
+        raise RuntimeError("phone contacts provider returned a missing or malformed MIME type")
+
     resolver = str(adb(
         adb_path, "shell", "cmd", "package", "resolve-activity", "--brief",
-        "-a", "android.intent.action.PICK", "-d", "content://com.android.contacts/data/phones",
+        "-a", "android.intent.action.PICK", "-d", PHONE_PICK_URI, "-t", phone_mime_type,
     ))
     resolved = next((line.strip() for line in resolver.splitlines()
                      if line.strip().startswith(PACKAGE + "/")), "")
@@ -112,6 +119,7 @@ def discover(adb_path: str, apksigner_path: str) -> dict[str, str]:
         "pickerVersionCode": version_code.group(1),
         "pickerVersion": f"{version_name.group(1)}:{version_code.group(1)}",
         "pickerCertificateSha256": certificate,
+        "phonePickerMimeType": phone_mime_type,
         "resolvedPickerActivity": resolved,
         "pickerIntentResolverOutput": resolver.strip(),
         "pickerIntentMatchesPackage": picker_intent_matches(resolver),

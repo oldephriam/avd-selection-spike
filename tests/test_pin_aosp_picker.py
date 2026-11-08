@@ -9,7 +9,13 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts.pin_aosp_picker import main, missing_pin_variables, picker_intent_matches, pin_variable_values
+from scripts.pin_aosp_picker import (
+    discover,
+    main,
+    missing_pin_variables,
+    picker_intent_matches,
+    pin_variable_values,
+)
 
 
 IDENTITY = {
@@ -56,6 +62,30 @@ class PinAospPickerTests(unittest.TestCase):
         self.assertTrue(picker_intent_matches("com.android.contacts/.activities.PeopleActivity"))
         self.assertFalse(picker_intent_matches("No activity found"))
         self.assertFalse(picker_intent_matches("com.android.dialer/.PickerActivity"))
+
+    def test_discovery_resolves_picker_with_provider_mime_type(self) -> None:
+        uri = "content://com.android.contacts/data/phones"
+        mime_type = "vnd.android.cursor.dir/phone_v2"
+        device_info = "List of devices attached\nemulator-5554 device product:sdk_phone64_x86_64\n"
+        signer = "Signer #1 certificate SHA-256 digest: " + "a" * 64
+        adb_outputs = [
+            "aosp/fingerprint", "35", "x86_64", "package:com.android.contacts",
+            "Package [com.android.contacts] versionName=2.0 versionCode=35",
+            "package:/data/app/com.android.contacts/base.apk", "", mime_type,
+            "com.android.contacts/.activities.ContactSelectionActivity", "package:com.android.contacts\n",
+        ]
+        with patch("scripts.pin_aosp_picker.adb", side_effect=adb_outputs) as adb_mock, \
+                patch("scripts.pin_aosp_picker.run", side_effect=[device_info, signer]):
+            identity = discover("adb", "apksigner")
+
+        operations = [operation.args[1:] for operation in adb_mock.call_args_list]
+        self.assertIn(("shell", "content", "gettype", "--uri", uri), operations)
+        resolver_call = next(op for op in operations if "resolve-activity" in op)
+        self.assertIn("-t", resolver_call)
+        self.assertEqual(resolver_call[resolver_call.index("-t") + 1], mime_type)
+        self.assertEqual(identity["phonePickerMimeType"], mime_type)
+        self.assertTrue(identity["pickerIntentMatchesPackage"])
+
     def test_verify_with_missing_pins_discovers_and_writes_diagnostics_without_claiming_verified(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "picker.json"
