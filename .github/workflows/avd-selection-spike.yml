@@ -100,7 +100,7 @@ jobs:
             'build-tools;35.0.0' \
             'emulator' \
             "$SYSTEM_IMAGE"
-          sudo chmod -R 777 "$ANDROID_SDK_ROOT"
+          sudo chmod -R 777 /home/runner/.android "$ANDROID_SDK_ROOT"
           test -x "$ANDROID_SDK_ROOT/emulator/emulator"
           test -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
 
@@ -112,6 +112,7 @@ jobs:
           sudo groupadd --system pacer-avd 2>/dev/null || true
           sudo useradd --system --create-home --home-dir "$AVD_HOME" --shell /usr/sbin/nologin --gid pacer-avd pacer-avd 2>/dev/null || true
           sudo usermod -aG kvm pacer-avd
+          sudo chmod -R 777 /home/runner/.android "$ANDROID_SDK_ROOT"
           sudo install -d -o pacer-avd -g pacer-avd "$AVD_HOME/.android/avd"
           sudo -u pacer-avd test -r /dev/kvm
           sudo -u pacer-avd test -w /dev/kvm
