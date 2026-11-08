@@ -181,11 +181,27 @@ def fixture_visible_in_provider(avd: AVD) -> bool:
 
 def wait_for_fixture_provider_visibility(avd: AVD, timeout_seconds: int = 15) -> None:
     deadline = time.monotonic() + timeout_seconds
+    last_output = ""
     while time.monotonic() < deadline:
-        if fixture_visible_in_provider(avd):
+        binding = fixture_binding()
+        source = (ROOT / "android/seeder/src/main/java/com/pacer/test/seeder/SeederActivity.java").read_text(encoding="utf-8")
+        phone = re.search(r'FIXTURE_RECIPIENT_KEY\s*=\s*"([^"]+)"', source)
+        if not phone:
+            raise RuntimeError("synthetic fixture phone value is missing")
+        last_output = str(avd.command(
+            "shell", "content", "query",
+            "--uri", "content://com.android.contacts/data/phones",
+            "--projection", "display_name:data1",
+            "--where", f"display_name='{binding.display_name}'",
+        ))
+        if binding.display_name in last_output and phone.group(1) in last_output:
             return
         time.sleep(0.5)
-    raise RuntimeError("ADB shell query did not observe the committed synthetic phone row")
+    sanitized = re.sub(r"\d", "", last_output)[:300]
+    raise RuntimeError(
+        f"ADB shell query did not observe the committed synthetic phone row; "
+        f"provider response={sanitized!r}"
+    )
 
 
 def main() -> int:
