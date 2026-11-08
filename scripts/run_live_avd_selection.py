@@ -164,6 +164,30 @@ def fixture_binding() -> RosterBinding:
     return RosterBinding(SNAPSHOT, 0, normalize_us_number(key.group(1)), name.group(1))
 
 
+def fixture_visible_in_provider(avd: AVD) -> bool:
+    binding = fixture_binding()
+    source = (ROOT / "android/seeder/src/main/java/com/pacer/test/seeder/SeederActivity.java").read_text(encoding="utf-8")
+    phone = re.search(r'FIXTURE_RECIPIENT_KEY\s*=\s*"([^"]+)"', source)
+    if not phone:
+        raise RuntimeError("synthetic fixture phone value is missing")
+    output = str(avd.command(
+        "shell", "content", "query",
+        "--uri", "content://com.android.contacts/data/phones",
+        "--projection", "display_name:data1",
+        "--where", f"display_name='{binding.display_name}'",
+    ))
+    return binding.display_name in output and phone.group(1) in output
+
+
+def wait_for_fixture_provider_visibility(avd: AVD, timeout_seconds: int = 15) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if fixture_visible_in_provider(avd):
+            return
+        time.sleep(0.5)
+    raise RuntimeError("ADB shell query did not observe the committed synthetic phone row")
+
+
 def main() -> int:
     sdk = Path(os.environ["ANDROID_SDK_ROOT"])
     adb_path = str(sdk / "platform-tools" / "adb")
@@ -191,6 +215,7 @@ def main() -> int:
         avd.command("shell", "am", "start", "-W", "-n", f"{SEEDER}/.SeederActivity", timeout=30)
         avd.tap_label(SEEDER, "Seed synthetic contact")
         avd.wait_for_text("SEEDED: one synthetic contact is ready")
+        wait_for_fixture_provider_visibility(avd)
         avd.command("uninstall", SEEDER, timeout=60)
         installed = str(avd.command("shell", "pm", "list", "packages", SEEDER)).strip()
         if installed:

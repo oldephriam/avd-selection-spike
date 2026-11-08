@@ -31,6 +31,22 @@ class LiveAvdCommandTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "FAILED: synthetic provider insert"):
                 avd.wait_for_text("SEEDED", timeout_seconds=1)
 
+    def test_provider_visibility_check_uses_contacts_phone_view(self) -> None:
+        class FakeAvd:
+            def __init__(self):
+                self.commands = []
+
+            def command(self, *args, **kwargs):
+                self.commands.append((args, kwargs))
+                return "Row: 0 display_name=Pacer Probe Fixture 001 data1=+12025550100"
+
+        avd = FakeAvd()
+        self.assertTrue(live.fixture_visible_in_provider(avd))
+        self.assertEqual(avd.commands[0][0][:4], (
+            "shell", "content", "query", "--uri"
+        ))
+        self.assertIn("content://com.android.contacts/data/phones", avd.commands[0][0])
+
     def test_command_forwards_timeout_to_subprocess_runner(self) -> None:
         avd = live.AVD("adb")
         with patch.object(live, "run", return_value="ok") as run:

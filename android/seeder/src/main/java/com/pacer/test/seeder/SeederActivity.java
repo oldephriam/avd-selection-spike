@@ -2,7 +2,6 @@ package com.pacer.test.seeder;
 
 import android.Manifest;
 import android.app.Activity;
-import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.pm.PackageManager;
@@ -115,7 +114,6 @@ public final class SeederActivity extends Activity {
                     ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME,
                     FIXTURE_DISPLAY_NAME);
             insertPhone(rawId);
-            verifyFixtureVisible();
             getPreferences(MODE_PRIVATE).edit().putLong(RAW_CONTACT_ID, rawId).apply();
             setStatus("SEEDED: one synthetic contact is ready");
         } catch (RuntimeException error) {
@@ -153,34 +151,6 @@ public final class SeederActivity extends Activity {
         if (inserted == null) {
             throw new IllegalStateException("Contacts provider rejected the synthetic phone row");
         }
-    }
-
-    private void verifyFixtureVisible() {
-        ContentResolver resolver = getContentResolver();
-        String[] projection = {
-                ContactsContract.CommonDataKinds.Phone._ID,
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                ContactsContract.CommonDataKinds.Phone.NUMBER
-        };
-        String selection = ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + "=? AND "
-                + ContactsContract.CommonDataKinds.Phone.NUMBER + "=?";
-        long deadline = android.os.SystemClock.elapsedRealtime() + 10000;
-        while (android.os.SystemClock.elapsedRealtime() < deadline) {
-            try (android.database.Cursor cursor = resolver.query(
-                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                    projection, selection, new String[]{FIXTURE_DISPLAY_NAME, FIXTURE_RECIPIENT_KEY}, null)) {
-                if (cursor != null && cursor.moveToFirst()) {
-                    return;
-                }
-            }
-            try {
-                Thread.sleep(200);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("interrupted while waiting for Contacts provider", interrupted);
-            }
-        }
-        throw new IllegalStateException("Contacts provider did not expose the committed phone row");
     }
 
     private void clearFixture() {
