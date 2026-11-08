@@ -343,8 +343,15 @@ class AdbSelectionAdapter:
             r"requested permissions:\s*(.*?)(?=\n\s*(?:install permissions:|runtime permissions:|User \d+:)|\Z)",
             dump, re.S | re.I)
         if requested_match is None:
-            raise ObservationError(f"requested-permission evidence missing for {package}")
-        requested = frozenset(re.findall(r"android\.permission\.[A-Z0-9_.]+", requested_match.group(1)))
+            # AOSP omits this heading when ParsedPackage has no requested permissions;
+            # require a later package section to rule out a truncated dump.
+            if not re.search(r"(?m)^\s*(?:install permissions:|User \d+:)", dump, re.I):
+                raise ObservationError(f"requested-permission evidence missing for {package}")
+            requested = frozenset()
+        else:
+            requested = frozenset(
+                re.findall(r"android\.permission\.[A-Z0-9_.]+", requested_match.group(1))
+            )
         granted = frozenset(name for name, value in re.findall(
             r"(android\.permission\.[A-Z0-9_.]+):\s*granted=(true|false)", dump, re.I)
             if value.lower() == "true")

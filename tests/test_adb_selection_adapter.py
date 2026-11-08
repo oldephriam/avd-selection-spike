@@ -55,13 +55,14 @@ content-desc="selection_readback: BOUND CANDIDATE" clickable="false" enabled="tr
 
 class FakeProcessRunner:
     def __init__(self, *, extra_serial=False, requested_permissions="", picker_cert=PICKER_CERT,
-                 returned_extra_surface=False):
+                 returned_extra_surface=False, omit_empty_requested_permissions=False):
         self.calls = []
         self.state = "picker"
         self.extra_serial = extra_serial
         self.requested_permissions = requested_permissions
         self.picker_cert = picker_cert
         self.returned_extra_surface = returned_extra_surface
+        self.omit_empty_requested_permissions = omit_empty_requested_permissions
         self.layout_changes_before_tap = False
         self.picker_hierarchy_reads = 0
         self.selected_name = "Synthetic Contact 001"
@@ -78,7 +79,15 @@ class FakeProcessRunner:
         elif "getprop ro.build.fingerprint" in joined:
             stdout = FINGERPRINT + "\n"
         elif "dumpsys package " + PROBE_PACKAGE in joined:
-            stdout = f"Package [{PROBE_PACKAGE}]\n versionName={PROBE_VERSION.split(':')[0]}\n versionCode={PROBE_VERSION.split(':')[1]} minSdk=23\n requested permissions:\n{self.requested_permissions}\n install permissions:\n"
+            requested_section = (
+                "" if self.omit_empty_requested_permissions and not self.requested_permissions
+                else f" requested permissions:\n{self.requested_permissions}\n"
+            )
+            stdout = (
+                f"Package [{PROBE_PACKAGE}]\n versionName={PROBE_VERSION.split(':')[0]}\n"
+                f"versionCode={PROBE_VERSION.split(':')[1]} minSdk=23\n{requested_section}"
+                " install permissions:\n"
+            )
         elif "dumpsys package " + PICKER_PACKAGE in joined:
             stdout = f"Package [{PICKER_PACKAGE}]\n versionName={PICKER_VERSION.split(':')[0]}\n versionCode={PICKER_VERSION.split(':')[1]} minSdk=23\n requested permissions:\n install permissions:\n"
         elif "pm path " in joined:
@@ -149,6 +158,11 @@ class AdbSelectionAdapterTests(unittest.TestCase):
             sleep_fn=lambda _: None,
         )
         return RecipientSelectionProbe(observer)
+
+    def test_empty_requested_permissions_section_may_be_omitted_by_package_dump(self):
+        runner = FakeProcessRunner(omit_empty_requested_permissions=True)
+        identity = self.make_adapter(runner).inspect_device(SERIAL)
+        self.assertEqual(identity.declared_permissions, frozenset())
 
     def test_timeout_cannot_be_configured_as_unbounded(self):
         with self.assertRaises(ValueError):
