@@ -100,6 +100,7 @@ jobs:
             'build-tools;35.0.0' \
             'emulator' \
             "$SYSTEM_IMAGE"
+          sudo chmod -R 777 "$ANDROID_SDK_ROOT"
           test -x "$ANDROID_SDK_ROOT/emulator/emulator"
           test -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
 
