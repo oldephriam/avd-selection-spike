@@ -55,14 +55,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Enable KVM permissions
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm-4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
       - name: Require KVM before provisioning
         shell: bash
         run: |
@@ -100,7 +92,19 @@ jobs:
             'build-tools;35.0.0' \
             'emulator' \
             "$SYSTEM_IMAGE"
-          sudo chmod -R 777 /home/runner/.android "$ANDROID_SDK_ROOT"
+          test -x "$ANDROID_SDK_ROOT/emulator/emulator"
+          test -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
+
+      - name: Make Android SDK tools executable and directories traversable
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo chmod -R a+rx "$ANDROID_SDK_ROOT"
+          for directory in /home /home/runner /home/runner/.android "$ANDROID_SDK_ROOT"; do
+            sudo chmod a+rx "$directory"
+          done
+          test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/avdmanager"
+          test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
           test -x "$ANDROID_SDK_ROOT/emulator/emulator"
           test -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
 
@@ -112,12 +116,14 @@ jobs:
           sudo groupadd --system pacer-avd 2>/dev/null || true
           sudo useradd --system --create-home --home-dir "$AVD_HOME" --shell /usr/sbin/nologin --gid pacer-avd pacer-avd 2>/dev/null || true
           sudo usermod -aG kvm pacer-avd
-          sudo chmod -R 777 /home/runner/.android "$ANDROID_SDK_ROOT"
           sudo install -d -o pacer-avd -g pacer-avd "$AVD_HOME/.android/avd"
           sudo -u pacer-avd test -r /dev/kvm
           sudo -u pacer-avd test -w /dev/kvm
+          sudo -u pacer-avd test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/avdmanager"
+          sudo -u pacer-avd test -x "$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
+          sudo -u pacer-avd test -x "$ANDROID_SDK_ROOT/emulator/emulator"
           sudo -u pacer-avd env ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" ANDROID_USER_HOME="$AVD_HOME/.android" AVD_NAME="$AVD_NAME" SYSTEM_IMAGE="$SYSTEM_IMAGE" \
-            bash -c 'printf "no\n" | "$ANDROID_HOME/cmdline-tools/16.0/bin/avdmanager" create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE" --device pixel_2'
+            bash -c 'echo no | "$ANDROID_HOME/cmdline-tools/16.0/bin/avdmanager" create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE" --device pixel_2'
           sudo -u pacer-avd env ANDROID_HOME="$ANDROID_HOME" ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" ANDROID_USER_HOME="$AVD_HOME/.android" \
             "$ANDROID_SDK_ROOT/emulator/emulator" -accel-check
 
