@@ -229,6 +229,13 @@ def main() -> int:
         result = RecipientSelectionProbe(observer).select(
             RecipientTarget(binding.snapshot_id, binding.roster_index, binding.recipient_key)
         )
+        if result.status is ProbeStatus.NOT_FOUND:
+            frame = adapter.capture(SERIAL)
+            labels = [re.sub(r"\d", "", label)[:80] for label in frame.active_control_labels[:20]]
+            print(
+                f"Picker diagnostic: surfaces={frame.surface_packages!r}, "
+                f"candidateCount={len(frame.candidates)}, controls={labels!r}"
+            )
         if result.status is not ProbeStatus.BOUND or result.evidence is None:
             raise RuntimeError(f"live selection probe failed closed: {result.status.value}: {result.detail}")
         print("Live selection probe BOUND; returned probe surface/readback and pinned identities verified.")
