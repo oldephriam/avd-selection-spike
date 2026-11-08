@@ -84,7 +84,19 @@ class AVD:
                     matches.append(rect)
         unique = set(matches)
         if len(unique) != 1:
-            raise RuntimeError(f"expected one visible enabled control labelled {label!r}")
+            observed_labels = [
+                value[:80]
+                for node in root.iter()
+                for value in (
+                    node.attrib.get("text", "").strip(),
+                    node.attrib.get("content-desc", "").strip(),
+                )
+                if value
+            ][:20]
+            raise RuntimeError(
+                f"expected one visible enabled control labelled {label!r}; "
+                f"observed accessibility labels={observed_labels!r}"
+            )
         return next(iter(unique))
 
     def tap_label(self, package: str, label: str) -> None:

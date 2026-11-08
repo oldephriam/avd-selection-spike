@@ -13,6 +13,15 @@ import run_live_avd_selection as live
 
 
 class LiveAvdCommandTests(unittest.TestCase):
+    def test_button_bounds_reports_observed_control_when_label_is_absent(self) -> None:
+        hierarchy = (
+            b'<hierarchy><node text="Permission required" clickable="true" '
+            b'enabled="true" visible-to-user="true" bounds="[10,20][210,80]"/></hierarchy>'
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "Permission required"):
+            live.AVD("adb")._button_bounds(hierarchy, "Seed synthetic contact")
+
     def test_command_forwards_timeout_to_subprocess_runner(self) -> None:
         avd = live.AVD("adb")
         with patch.object(live, "run", return_value="ok") as run:
