@@ -9,7 +9,7 @@ on:
         options:
           - verify
           - discover
-        default: verify
+        default: discover
         required: true
   pull_request:
     paths:
@@ -210,8 +210,8 @@ jobs:
             --apksigner "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" \
             --output "$AOSP_PICKER_PIN_FILE" \
             --mode "$PIN_MODE"
-          if [[ "$PIN_MODE" == discover ]]; then
-            echo 'Discovery only: no APK compilation or probe execution; set the four AOSP_* repository variables from the uploaded pin artifact, then rerun with verify.'
+          if [[ "$PIN_MODE" == discover || -z "$AOSP_35_BUILD_FINGERPRINT" || -z "$AOSP_CONTACTS_VERSION_NAME" || -z "$AOSP_CONTACTS_VERSION_CODE" || -z "$AOSP_CONTACTS_CERT_SHA256" ]]; then
+            echo 'Discovery only: copy the four AOSP_* values from the pin artifact/log to Actions Variables. Check pickerIntentResolverOutput before using them; verify mode will fail closed unless com.android.contacts resolves the phone picker.'
           fi
 
       - name: Set up Gradle 8.9
