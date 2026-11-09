@@ -170,33 +170,53 @@ def fixture_visible_in_provider(avd: AVD) -> bool:
     phone = re.search(r'FIXTURE_RECIPIENT_KEY\s*=\s*"([^"]+)"', source)
     if not phone:
         raise RuntimeError("synthetic fixture phone value is missing")
-    output = str(avd.command(
-        "shell", "content", "query",
-        "--uri", "content://com.android.contacts/data/phones",
-    ))
-    return binding.display_name in output and phone.group(1) in output
+
+    def query(path: str) -> str:
+        return str(avd.command(
+            "shell", "content", "query",
+            "--uri", f"content://com.android.contacts/{path}",
+        ))
+
+    phone_rows = query("data/phones")
+    raw_rows = query("raw_contacts")
+    contact_rows = query("contacts")
+    data_matches = (
+        binding.display_name in phone_rows
+        and phone.group(1) in phone_rows
+        and "vnd.android.cursor.item/phone" in phone_rows
+    )
+    data_raw_id = re.search(r"\braw_contact_id=(\d+)\b", phone_rows)
+    data_contact_id = re.search(r"\bcontact_id=(\d+)\b", phone_rows)
+    if not data_matches or not data_raw_id or not data_contact_id:
+        return False
+
+    raw_row = next((line for line in raw_rows.splitlines()
+                    if re.search(rf"\b_id={re.escape(data_raw_id.group(1))}\b", line)), "")
+    raw_contact_id = re.search(r"\bcontact_id=(\d+)\b", raw_row)
+    raw_mode = re.search(r"\baggregation_mode=(\d+)\b", raw_row)
+    raw_account_name = re.search(r"\baccount_name=([^ ,]+)", raw_row, re.I)
+    raw_account_type = re.search(r"\baccount_type=([^ ,]+)", raw_row, re.I)
+    aggregated = (
+        bool(raw_contact_id)
+        and raw_contact_id.group(1) == data_contact_id.group(1)
+        and raw_mode is not None and raw_mode.group(1) == "0"
+        and raw_account_name is not None and raw_account_name.group(1).casefold() == "null"
+        and raw_account_type is not None and raw_account_type.group(1).casefold() == "null"
+        and re.search(rf"\b_id={re.escape(data_contact_id.group(1))}\b", contact_rows) is not None
+        and binding.display_name in contact_rows
+    )
+    return aggregated
 
 
 def wait_for_fixture_provider_visibility(avd: AVD, timeout_seconds: int = 15) -> None:
     deadline = time.monotonic() + timeout_seconds
-    last_output = ""
     while time.monotonic() < deadline:
-        binding = fixture_binding()
-        source = (ROOT / "android/seeder/src/main/java/com/pacer/test/seeder/SeederActivity.java").read_text(encoding="utf-8")
-        phone = re.search(r'FIXTURE_RECIPIENT_KEY\s*=\s*"([^"]+)"', source)
-        if not phone:
-            raise RuntimeError("synthetic fixture phone value is missing")
-        last_output = str(avd.command(
-            "shell", "content", "query",
-            "--uri", "content://com.android.contacts/data/phones",
-        ))
-        if binding.display_name in last_output and phone.group(1) in last_output:
+        if fixture_visible_in_provider(avd):
             return
         time.sleep(0.5)
-    sanitized = re.sub(r"\d", "", last_output)[:300]
     raise RuntimeError(
-        f"ADB shell query did not observe the committed synthetic phone row; "
-        f"provider response={sanitized!r}"
+        "Contacts provider did not expose a joined fixture row: phone Data row, "
+        "RawContacts account/aggregation linkage, or aggregated Contacts row missing"
     )
 
 
@@ -228,6 +248,7 @@ def main() -> int:
         avd.tap_label(SEEDER, "Seed synthetic contact")
         avd.wait_for_text("SEEDED: one synthetic contact is ready")
         wait_for_fixture_provider_visibility(avd)
+        print("Provider verified: phone Data row links to a default-aggregated local RawContact and Contacts row.")
         avd.command("uninstall", SEEDER, timeout=60)
         installed = str(avd.command("shell", "pm", "list", "packages", SEEDER)).strip()
         if installed:

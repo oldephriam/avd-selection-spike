@@ -38,14 +38,42 @@ class LiveAvdCommandTests(unittest.TestCase):
 
             def command(self, *args, **kwargs):
                 self.commands.append((args, kwargs))
-                return "Row: 0 display_name=Pacer Probe Fixture 001 data1=+12025550100"
+                uri = args[args.index("--uri") + 1]
+                if uri.endswith("/data/phones"):
+                    return ("Row: 0 _id=9 raw_contact_id=4 contact_id=7 "
+                            "mimetype=vnd.android.cursor.item/phone_v2 "
+                            "display_name=Pacer Probe Fixture 001 data1=+12025550100")
+                if uri.endswith("/raw_contacts"):
+                    return ("Row: 0 _id=4 account_name=NULL account_type=NULL "
+                            "contact_id=7 aggregation_mode=0 deleted=0")
+                if uri.endswith("/contacts"):
+                    return "Row: 0 _id=7 display_name=Pacer Probe Fixture 001"
+                raise AssertionError(f"unexpected provider uri: {uri}")
 
         avd = FakeAvd()
         self.assertTrue(live.fixture_visible_in_provider(avd))
-        self.assertEqual(avd.commands[0][0][:4], (
-            "shell", "content", "query", "--uri"
-        ))
-        self.assertIn("content://com.android.contacts/data/phones", avd.commands[0][0])
+        self.assertEqual(len(avd.commands), 3)
+        uris = [args[args.index("--uri") + 1] for args, _ in avd.commands]
+        self.assertEqual(uris, [
+            "content://com.android.contacts/data/phones",
+            "content://com.android.contacts/raw_contacts",
+            "content://com.android.contacts/contacts",
+        ])
+
+    def test_phone_row_alone_is_not_enough_without_aggregated_contact(self) -> None:
+        class FakeAvd:
+            def command(self, *args, **kwargs):
+                uri = args[args.index("--uri") + 1]
+                if uri.endswith("/data/phones"):
+                    return ("Row: 0 raw_contact_id=4 contact_id=7 "
+                            "mimetype=vnd.android.cursor.item/phone_v2 "
+                            "display_name=Pacer Probe Fixture 001 data1=+12025550100")
+                if uri.endswith("/raw_contacts"):
+                    return ("Row: 0 _id=4 account_name=NULL account_type=NULL "
+                            "contact_id=7 aggregation_mode=0")
+                return "No result found."
+
+        self.assertFalse(live.fixture_visible_in_provider(FakeAvd()))
 
     def test_command_forwards_timeout_to_subprocess_runner(self) -> None:
         avd = live.AVD("adb")
