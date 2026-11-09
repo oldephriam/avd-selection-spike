@@ -74,7 +74,7 @@ public final class PhonePickerItemClickTest {
                 System.out.println("PICKER_ACTIVITY_STATE: windowFocus=" + picker.hasWindowFocus()
                         + "; finishing=" + picker.isFinishing());
                 if (outcome[0] != null) {
-                    for (String line : outcome[0].diagnostic.split("\\n")) {
+                    for (String line : outcome[0].diagnostic.split("\n")) {
                         System.out.println("PICKER_VIEW: " + line);
                     }
                 }
@@ -158,7 +158,7 @@ public final class PhonePickerItemClickTest {
         while (pendingCount > 0 && visited < 32) {
             View view = pending[--pendingCount];
             visited++;
-            description.append("\\n").append(view.getClass().getSimpleName()).append('#');
+            description.append("\n").append(view.getClass().getSimpleName()).append('#');
             int id = view.getId();
             if (id == View.NO_ID) {
                 description.append("no-id");
