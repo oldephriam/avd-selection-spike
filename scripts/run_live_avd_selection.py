@@ -255,6 +255,18 @@ def fixture_visible_in_provider(avd: AVD) -> bool:
     return aggregated
 
 
+def enable_root_adb_for_instrumentation(avd: AVD) -> None:
+    debuggable = str(avd.command("shell", "getprop", "ro.debuggable")).strip()
+    if debuggable != "1":
+        raise RuntimeError("cross-signature instrumentation requires the pinned debuggable AOSP image")
+    root_output = str(avd.command("root", timeout=30, check=False)).casefold()
+    if "cannot run as root" in root_output:
+        raise RuntimeError("pinned AOSP emulator refused root adbd required for cross-signature instrumentation")
+    avd.command("wait-for-device", timeout=45)
+    if str(avd.command("shell", "id", "-u")).strip() != "0":
+        raise RuntimeError("root adbd did not yield uid 0 for instrumentation launch")
+
+
 def encode_instrumentation_display_name(display_name: str) -> str:
     return base64.b64encode(display_name.encode("utf-8")).decode("ascii")
 
@@ -366,6 +378,7 @@ def main() -> int:
             max_polls=4,
             poll_interval_seconds=1,
         )
+        enable_root_adb_for_instrumentation(avd)
         harness_output = str(avd.command(
             "shell", "am", "instrument", "-w",
             "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",

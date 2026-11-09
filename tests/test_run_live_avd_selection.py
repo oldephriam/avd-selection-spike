@@ -82,6 +82,41 @@ class LiveAvdCommandTests(unittest.TestCase):
             "content://com.android.contacts/contacts",
         ])
 
+    def test_instrumentation_root_requires_debuggable_image_and_verified_root_uid(self) -> None:
+        class FakeAvd:
+            def __init__(self):
+                self.commands = []
+
+            def command(self, *args, **kwargs):
+                self.commands.append(args)
+                if args == ("shell", "getprop", "ro.debuggable"):
+                    return "1"
+                if args == ("root",):
+                    return "restarting adbd as root"
+                if args == ("shell", "id", "-u"):
+                    return "0"
+                return ""
+
+        avd = FakeAvd()
+        live.enable_root_adb_for_instrumentation(avd)
+        self.assertIn(("root",), avd.commands)
+        self.assertIn(("wait-for-device",), avd.commands)
+        self.assertEqual(avd.commands[-1], ("shell", "id", "-u"))
+
+    def test_instrumentation_root_is_refused_on_non_debuggable_image(self) -> None:
+        class FakeAvd:
+            def __init__(self):
+                self.commands = []
+
+            def command(self, *args, **kwargs):
+                self.commands.append(args)
+                return "0" if args == ("shell", "getprop", "ro.debuggable") else ""
+
+        avd = FakeAvd()
+        with self.assertRaisesRegex(RuntimeError, "debuggable AOSP image"):
+            live.enable_root_adb_for_instrumentation(avd)
+        self.assertNotIn(("root",), avd.commands)
+
     def test_command_can_capture_nonzero_instrumentation_output(self) -> None:
         avd = live.AVD("adb")
         with patch.object(live, "run", return_value="usage from am") as run_command:
