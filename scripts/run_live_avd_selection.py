@@ -294,6 +294,8 @@ def readback_status(readback: str) -> str:
         return "permission_denied"
     if "selected row could not be read" in readback:
         return "uri_unreadable"
+    if "selected URI is invalid" in readback:
+        return "uri_invalid"
     if "UNVERIFIED" in readback:
         return "unverified"
     return "status_missing"
@@ -488,6 +490,18 @@ def main() -> int:
         if frame.send_surface_present or frame.surface_packages != (PROBE,):
             raise RuntimeError("unexpected surface appeared after instrumented picker activation")
         readback = "\n".join(frame.visible_text)
+        probe_result_log = str(avd.command(
+            "shell", "logcat", "-d", "-s", "PacerProbeResult:I", check=False,
+        ))
+        probe_result_trace = [
+            line.strip() for line in probe_result_log.splitlines()
+            if "PacerProbeResult" in line and ("RESULT_TRACE" in line or "READBACK_TRACE" in line)
+        ]
+        if probe_result_trace:
+            print("Probe result-delivery trace:")
+            print("\n".join(sanitized_instrumentation_output(
+                "\n".join(probe_result_trace), binding, fixture_data_id,
+            ).splitlines()))
         expected_fields = (
             ("status", "RESULT_OK: BOUND CANDIDATE"),
             ("contact_row_id", f"contact_row_id={fixture_data_id}"),

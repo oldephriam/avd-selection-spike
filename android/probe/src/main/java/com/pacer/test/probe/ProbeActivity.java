@@ -7,6 +7,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.ContactsContract;
+import android.util.Log;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -82,6 +83,7 @@ public final class ProbeActivity extends Activity {
         if (requestCode != PICK_CONTACT_REQUEST) {
             return;
         }
+        tracePickerResult(requestCode, resultCode, data);
         pickerButton.setEnabled(true);
         if (resultCode == RESULT_CANCELED) {
             showReadback("UNVERIFIED: picker returned RESULT_CANCELED");
@@ -96,6 +98,26 @@ public final class ProbeActivity extends Activity {
             return;
         }
         readSelectedPhoneRow(data.getData());
+    }
+
+    private void tracePickerResult(int requestCode, int resultCode, Intent data) {
+        Uri uri = data == null ? null : data.getData();
+        String uriPermission = "not-checkable";
+        if (uri != null) {
+            int permission = checkUriPermission(uri, android.os.Process.myPid(),
+                    android.os.Process.myUid(), Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            uriPermission = permission == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ? "granted" : "denied";
+        }
+        Log.i("PacerProbeResult", "RESULT_TRACE requestCode=" + requestCode
+                + ";resultCode=" + resultCode
+                + ";dataPresent=" + (data != null)
+                + ";uriPresent=" + (uri != null)
+                + ";scheme=" + (uri == null ? "none" : uri.getScheme())
+                + ";authority=" + (uri == null ? "none" : uri.getAuthority())
+                + ";readGrantFlag=" + (data != null
+                        && (data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0)
+                + ";uriPermission=" + uriPermission);
     }
 
     private void readSelectedPhoneRow(Uri selectedUri) {
@@ -126,8 +148,12 @@ public final class ProbeActivity extends Activity {
             showReadback("RESULT_OK: BOUND CANDIDATE\ncontact_row_id=" + rowId
                     + "\ndisplay_name=" + displayName
                     + "\nrecipient_key=" + key);
-        } catch (SecurityException | IllegalArgumentException error) {
+        } catch (SecurityException error) {
+            Log.i("PacerProbeResult", "READBACK_TRACE outcome=security_exception;exception=SecurityException");
             showReadback("UNVERIFIED: picker did not grant readable selection evidence");
+        } catch (IllegalArgumentException error) {
+            Log.i("PacerProbeResult", "READBACK_TRACE outcome=invalid_uri;exception=IllegalArgumentException");
+            showReadback("UNVERIFIED: selected URI is invalid");
         }
     }
 
