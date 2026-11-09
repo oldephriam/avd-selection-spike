@@ -19,6 +19,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.util.Arrays;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -136,12 +138,31 @@ public final class PhonePickerItemClickTest {
         ListAdapter adapter = list.getAdapter();
         int matchPosition = -1;
         int matchCount = 0;
+        int cursorItemCount = 0;
+        int phoneIdMatchCount = 0;
+        int displayNameMatchCount = 0;
+        String firstItemType = "none";
+        String firstCursorColumns = "none";
+        StringBuilder itemTypes = new StringBuilder();
         for (int position = 0; position < adapter.getCount(); position++) {
             Object item = adapter.getItem(position);
+            if (position == 0) {
+                firstItemType = item == null ? "null" : item.getClass().getName();
+            }
+            if (position < 6) {
+                if (itemTypes.length() > 0) {
+                    itemTypes.append(',');
+                }
+                itemTypes.append(item == null ? "null" : item.getClass().getSimpleName());
+            }
             if (!(item instanceof Cursor)) {
                 continue;
             }
             Cursor cursor = (Cursor) item;
+            cursorItemCount++;
+            if (firstCursorColumns.equals("none")) {
+                firstCursorColumns = Arrays.toString(cursor.getColumnNames());
+            }
             int idColumn = cursor.getColumnIndex("_id");
             int nameColumn = cursor.getColumnIndex("display_name");
             if (nameColumn < 0) {
@@ -150,14 +171,28 @@ public final class PhonePickerItemClickTest {
             if (idColumn < 0 || nameColumn < 0) {
                 continue;
             }
-            if (expectedDataId.equals(cursor.getString(idColumn))
-                    && expectedDisplayName.equals(cursor.getString(nameColumn))) {
+            boolean phoneIdMatched = expectedDataId.equals(cursor.getString(idColumn));
+            boolean displayNameMatched = expectedDisplayName.equals(cursor.getString(nameColumn));
+            if (phoneIdMatched) {
+                phoneIdMatchCount++;
+            }
+            if (displayNameMatched) {
+                displayNameMatchCount++;
+            }
+            if (phoneIdMatched && displayNameMatched) {
                 matchPosition = position;
                 matchCount++;
             }
         }
         if (matchCount == 0) {
-            return new ClickOutcome(false, false, -1, "fixture row not loaded");
+            return new ClickOutcome(false, false, -1,
+                    "fixture row not loaded: adapter=" + adapter.getClass().getName()
+                            + "; items=" + adapter.getCount() + "; cursorItems=" + cursorItemCount
+                            + "; firstItem=" + firstItemType + "; firstItemTypes=" + itemTypes
+                            + "; firstCursorColumns=" + firstCursorColumns
+                            + "; phoneIdMatches=" + phoneIdMatchCount
+                            + "; displayNameMatches=" + displayNameMatchCount
+                            + "; listChildren=" + list.getChildCount());
         }
         if (matchCount != 1) {
             return new ClickOutcome(false, false, -1, "fixture data row was not unique");
