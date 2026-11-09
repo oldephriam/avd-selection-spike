@@ -5,6 +5,7 @@ import android.app.Instrumentation;
 import android.content.Intent;
 import android.database.Cursor;
 import android.os.Bundle;
+import android.os.Looper;
 import android.util.Base64;
 import android.view.View;
 import android.widget.ListAdapter;
@@ -137,6 +138,9 @@ public final class PhonePickerItemClickTest {
     private static ClickOutcome tryClickExactRow(Activity picker, String expectedDataId,
                                                   String expectedDisplayName,
                                                   String normalizedExpectedPhone) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            return new ClickOutcome(false, false, -1, "performItemClick must run on the main UI thread");
+        }
         ListView list = picker.findViewById(android.R.id.list);
         if (list == null) {
             View decor = picker.getWindow() == null ? null : picker.getWindow().getDecorView();
@@ -154,7 +158,11 @@ public final class PhonePickerItemClickTest {
             return new ClickOutcome(false, false, -1,
                     "ListView exists without adapter; hierarchy=" + describePickerViews(picker, list));
         }
+        if (list.getOnItemClickListener() == null) {
+            return new ClickOutcome(false, false, -1, "ListView OnItemClickListener is not bound");
+        }
         ListAdapter adapter = list.getAdapter();
+        int headerCount = list.getHeaderViewsCount();
         int matchPosition = -1;
         int matchCount = 0;
         boolean phoneIdMatches = false;
@@ -163,7 +171,8 @@ public final class PhonePickerItemClickTest {
         boolean hasIdColumn = false;
         boolean hasDisplayNameColumn = false;
         boolean hasPhoneNumberColumn = false;
-        for (int position = 0; position < adapter.getCount(); position++) {
+        // The ListView adapter includes header positions; scan from the first data row.
+        for (int position = headerCount; position < adapter.getCount(); position++) {
             Object item = adapter.getItem(position);
             if (!(item instanceof Cursor)) {
                 continue;
@@ -208,6 +217,10 @@ public final class PhonePickerItemClickTest {
         }
         if (matchCount != 1) {
             return new ClickOutcome(false, false, -1, "fixture data row was not unique");
+        }
+        if (matchPosition < headerCount) {
+            return new ClickOutcome(false, false, matchPosition,
+                    "fixture match resolved to a ListView header position");
         }
 
         int childIndex = matchPosition - list.getFirstVisiblePosition();
