@@ -333,9 +333,9 @@ def main() -> int:
 
     probe_apk = ROOT / "android/probe/build/outputs/apk/debug/probe-debug.apk"
     seeder_apk = ROOT / "android/seeder/build/outputs/apk/debug/seeder-debug.apk"
-    harness_apk = ROOT / "android/pickerharness/build/outputs/apk/debug/pickerharness-debug.apk"
+    harness_apk = ROOT / "android/pickerharness/build/outputs/apk/androidTest/debug/pickerharness-debug-androidTest.apk"
     if not probe_apk.is_file() or not seeder_apk.is_file() or not harness_apk.is_file():
-        raise RuntimeError("probe, seeder, or picker instrumentation APK artifact is missing")
+        raise RuntimeError("probe, seeder, or AndroidX picker instrumentation test APK artifact is missing")
 
     avd = AVD(adb_path)
     devices = str(run([adb_path, "devices", "-l"])).splitlines()
@@ -384,7 +384,7 @@ def main() -> int:
             "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",
             "-e", "fixture_data_id", fixture_data_id,
             "-e", "fixture_display_name_b64", encode_instrumentation_display_name(binding.display_name),
-            "com.pacer.test.pickerharness/.PickerInstrumentationRunner",
+            "com.pacer.test.pickerharness.test/androidx.test.runner.AndroidJUnitRunner",
             timeout=120,
             check=False,
         ))
@@ -433,9 +433,9 @@ def main() -> int:
         remaining = str(avd.command("shell", "pm", "list", "packages", SEEDER)).strip()
         if remaining:
             avd.command("uninstall", SEEDER, timeout=60)
-        harness_installed = str(avd.command("shell", "pm", "list", "packages", "com.pacer.test.pickerharness")).strip()
+        harness_installed = str(avd.command("shell", "pm", "list", "packages", "com.pacer.test.pickerharness.test")).strip()
         if harness_installed:
-            avd.command("uninstall", "com.pacer.test.pickerharness", timeout=60)
+            avd.command("uninstall", "com.pacer.test.pickerharness.test", timeout=60)
 
 
 if __name__ == "__main__":

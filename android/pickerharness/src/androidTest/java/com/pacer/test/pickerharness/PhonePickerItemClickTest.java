@@ -1,16 +1,27 @@
 package com.pacer.test.pickerharness;
 
 import android.app.Activity;
+import android.app.Instrumentation;
 import android.content.Intent;
 import android.database.Cursor;
 import android.os.Bundle;
-import android.test.InstrumentationTestCase;
 import android.util.Base64;
 import android.view.View;
 import android.widget.ListAdapter;
 import android.widget.ListView;
 
-public final class PhonePickerItemClickTest extends InstrumentationTestCase {
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+
+@RunWith(AndroidJUnit4.class)
+public final class PhonePickerItemClickTest {
     private static final String PROBE_PACKAGE = "com.pacer.test.probe";
     private static final String PROBE_ACTIVITY = "com.pacer.test.probe.ProbeActivity";
     private static final String PICKER_ACTIVITY = "com.android.contacts.activities.ContactSelectionActivity";
@@ -18,9 +29,10 @@ public final class PhonePickerItemClickTest extends InstrumentationTestCase {
     private static final String DISPLAY_NAME_ARGUMENT = "fixture_display_name_b64";
     private static final long LOAD_TIMEOUT_MILLIS = 30000;
 
-    public void testExactPhoneDataRowUsesListViewPerformItemClick() throws Exception {
-        PickerInstrumentationRunner runner = (PickerInstrumentationRunner) getInstrumentation();
-        Bundle arguments = runner.getRunnerArguments();
+    @Test
+    public void exactPhoneDataRowUsesListViewPerformItemClick() throws Exception {
+        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        Bundle arguments = InstrumentationRegistry.getArguments();
         String expectedDataId = arguments.getString(PHONE_DATA_ID_ARGUMENT, "");
         String encodedDisplayName = arguments.getString(DISPLAY_NAME_ARGUMENT, "");
         String expectedDisplayName = new String(
@@ -30,38 +42,42 @@ public final class PhonePickerItemClickTest extends InstrumentationTestCase {
                 expectedDataId.matches("[1-9][0-9]{0,18}"));
         assertTrue("fixture display name is missing", !expectedDisplayName.isEmpty());
 
-        Activity stale = runner.awaitPickerActivity(1);
-        assertNull("unexpected picker activity already observed before this run", stale);
+        Instrumentation.ActivityMonitor monitor = instrumentation.addMonitor(
+                PICKER_ACTIVITY, null, false);
+        try {
+            Intent probe = new Intent();
+            probe.setClassName(PROBE_PACKAGE, PROBE_ACTIVITY);
+            probe.putExtra("pacer_test_launch_picker", true);
+            probe.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            instrumentation.getContext().startActivity(probe);
 
-        Intent probe = new Intent();
-        probe.setClassName(PROBE_PACKAGE, PROBE_ACTIVITY);
-        probe.putExtra("pacer_test_launch_picker", true);
-        probe.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        getInstrumentation().getContext().startActivity(probe);
+            Activity picker = instrumentation.waitForMonitorWithTimeout(
+                    monitor, LOAD_TIMEOUT_MILLIS);
+            assertNotNull("pinned ContactSelectionActivity did not resume", picker);
+            assertEquals("unexpected package for observed picker", "com.android.contacts",
+                    picker.getPackageName());
+            assertEquals("unexpected picker activity", PICKER_ACTIVITY, picker.getClass().getName());
 
-        Activity picker = runner.awaitPickerActivity(LOAD_TIMEOUT_MILLIS);
-        assertNotNull("pinned ContactSelectionActivity did not resume", picker);
-        assertEquals("unexpected package for observed picker", "com.android.contacts",
-                picker.getPackageName());
-        assertEquals("unexpected picker activity", PICKER_ACTIVITY, picker.getClass().getName());
-
-        final ClickOutcome[] outcome = new ClickOutcome[1];
-        final long deadline = android.os.SystemClock.elapsedRealtime() + LOAD_TIMEOUT_MILLIS;
-        while (android.os.SystemClock.elapsedRealtime() < deadline) {
-            getInstrumentation().runOnMainSync(() -> {
-                outcome[0] = tryClickExactRow(picker, expectedDataId, expectedDisplayName);
-            });
-            if (outcome[0] != null && outcome[0].clicked) {
-                break;
+            final ClickOutcome[] outcome = new ClickOutcome[1];
+            final long deadline = android.os.SystemClock.elapsedRealtime() + LOAD_TIMEOUT_MILLIS;
+            while (android.os.SystemClock.elapsedRealtime() < deadline) {
+                instrumentation.runOnMainSync(() -> {
+                    outcome[0] = tryClickExactRow(picker, expectedDataId, expectedDisplayName);
+                });
+                if (outcome[0] != null && outcome[0].clicked) {
+                    break;
+                }
+                Thread.sleep(250);
             }
-            Thread.sleep(250);
+            assertNotNull("picker ListView or adapter was not ready before the bounded deadline", outcome[0]);
+            assertTrue("fixture row was not uniquely present and visible: " + outcome[0].diagnostic,
+                    outcome[0].clicked);
+            System.out.println("PERFORM_ITEM_CLICK target=verified-fixture-data-row; "
+                    + "position=" + outcome[0].position + "; returned=" + outcome[0].listenerInvoked);
+            assertTrue("ListView did not dispatch its item-click listener", outcome[0].listenerInvoked);
+        } finally {
+            instrumentation.removeMonitor(monitor);
         }
-        assertNotNull("picker ListView or adapter was not ready before the bounded deadline", outcome[0]);
-        assertTrue("fixture row was not uniquely present and visible: " + outcome[0].diagnostic,
-                outcome[0].clicked);
-        System.out.println("PERFORM_ITEM_CLICK target=verified-fixture-data-row; "
-                + "position=" + outcome[0].position + "; returned=" + outcome[0].listenerInvoked);
-        assertTrue("ListView did not dispatch its item-click listener", outcome[0].listenerInvoked);
     }
 
     private static ClickOutcome tryClickExactRow(Activity picker, String expectedDataId,
@@ -100,8 +116,7 @@ public final class PhonePickerItemClickTest extends InstrumentationTestCase {
             return new ClickOutcome(false, false, -1, "fixture data row was not unique");
         }
 
-        int firstVisible = list.getFirstVisiblePosition();
-        int childIndex = matchPosition - firstVisible;
+        int childIndex = matchPosition - list.getFirstVisiblePosition();
         if (childIndex < 0 || childIndex >= list.getChildCount()) {
             return new ClickOutcome(false, false, matchPosition, "fixture row is not currently visible");
         }

@@ -245,7 +245,7 @@ jobs:
       - name: Build probe, seeder, and picker harness APKs
         if: steps.picker.outputs.verified == 'true'
         shell: bash
-        run: gradle --no-daemon -p android :probe:assembleDebug :seeder:assembleDebug :pickerharness:assembleDebug
+        run: gradle --no-daemon -p android :probe:assembleDebug :seeder:assembleDebug :pickerharness:assembleDebugAndroidTest
 
       - name: Run offline regression suite
         if: steps.picker.outputs.verified == 'true'

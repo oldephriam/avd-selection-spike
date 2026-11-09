@@ -56,32 +56,40 @@ class AndroidContractTests(unittest.TestCase):
         self.assertNotIn("requestPermissions(", source)
         self.assertNotIn("startActivity(new Intent(Intent.ACTION_SEND", source)
 
-    def test_picker_item_click_harness_targets_pinned_contacts_without_permissions(self) -> None:
+    def test_picker_item_click_harness_uses_androidx_instrumentation_without_permissions(self) -> None:
         module = "pickerharness"
         manifest = self.manifest(module)
         build = (ROOT / module / "build.gradle.kts").read_text(encoding="utf-8")
         self.assertIn('applicationId = "com.pacer.test.pickerharness"', build)
-        self.assertIn('useLibrary("android.test.base")', build)
-        self.assertIn("compileOnly(files(", build)
-        self.assertIn("/optional/android.test.base.jar", build)
-        self.assertIn("/optional/android.test.runner.jar", build)
+        self.assertIn('testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"', build)
+        self.assertIn('androidTestImplementation("androidx.test:runner:', build)
+        self.assertIn('androidTestImplementation("androidx.test.ext:junit:', build)
+        gradle_properties = (ROOT / "gradle.properties").read_text(encoding="utf-8")
+        self.assertIn("android.useAndroidX=true", gradle_properties)
+        self.assertNotIn("android.test.", build)
         self.assertEqual(manifest.findall("uses-permission"), [])
-        instrumentation = manifest.find("instrumentation")
+        self.assertIsNone(manifest.find("instrumentation"))
+        android_test_manifest = ET.parse(
+            ROOT / module / "src/androidTest/AndroidManifest.xml").getroot()
+        self.assertEqual(android_test_manifest.findall("uses-permission"), [])
+        instrumentation = android_test_manifest.find("instrumentation")
         self.assertIsNotNone(instrumentation)
         self.assertEqual(attr(instrumentation, "targetPackage"), "com.android.contacts")
-        self.assertEqual(attr(instrumentation, "name"),
-                         "com.pacer.test.pickerharness.PickerInstrumentationRunner")
-        harness = (ROOT / module / "src/main/java/com/pacer/test/pickerharness/"
+        self.assertEqual(attr(instrumentation, "name"), "androidx.test.runner.AndroidJUnitRunner")
+        harness = (ROOT / module / "src/androidTest/java/com/pacer/test/pickerharness/"
                    "PhonePickerItemClickTest.java").read_text(encoding="utf-8")
-        runner = (ROOT / module / "src/main/java/com/pacer/test/pickerharness/"
-                  "PickerInstrumentationRunner.java").read_text(encoding="utf-8")
-        self.assertIn("callActivityOnResume", runner)
-        self.assertIn("getRunnerArguments", runner)
+        self.assertIn("@RunWith(AndroidJUnit4.class)", harness)
+        self.assertIn("InstrumentationRegistry.getArguments()", harness)
         self.assertIn("performItemClick", harness)
         self.assertIn("getItemIdAtPosition", harness)
         self.assertIn("Base64.decode", harness)
-        self.assertIn("fixture_display_name_b64", harness)
+        self.assertNotIn("android.test.", harness)
         self.assertNotIn("input tap", harness)
+        runner_script = (ROOT.parent / "scripts/run_live_avd_selection.py").read_text(encoding="utf-8")
+        self.assertIn("pickerharness-debug-androidTest.apk", runner_script)
+        self.assertIn("com.pacer.test.pickerharness.test/androidx.test.runner.AndroidJUnitRunner", runner_script)
+        workflow = (ROOT.parent / ".github/workflows/avd-selection-spike.yml").read_text(encoding="utf-8")
+        self.assertIn(":pickerharness:assembleDebugAndroidTest", workflow)
 
     def test_seeder_has_only_write_contacts_permission_and_is_separate_package(self) -> None:
         manifest = self.manifest("seeder")
@@ -136,8 +144,8 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn("PIN_DISCOVERY_REQUIRED", (root / "scripts" / "pin_aosp_picker.py").read_text(encoding="utf-8"))
         self.assertIn("aosp-picker-identity.json", workflow)
         self.assertIn("run_live_avd_selection.py", workflow)
-        self.assertIn(":pickerharness:assembleDebug", workflow)
-        self.assertIn(":pickerharness:assembleDebug", (root / "avd-selection-spike.txt").read_text(encoding="utf-8"))
+        self.assertIn(":pickerharness:assembleDebugAndroidTest", workflow)
+        self.assertIn(":pickerharness:assembleDebugAndroidTest", (root / "avd-selection-spike.txt").read_text(encoding="utf-8"))
         self.assertIn("Refresh ADB transport before picker inspection", workflow)
         self.assertIn("adb -s emulator-5554 get-state", workflow)
         self.assertIn("sys.boot_completed", workflow)
