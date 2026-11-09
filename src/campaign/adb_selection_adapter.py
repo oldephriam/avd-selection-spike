@@ -40,6 +40,10 @@ class _CandidateHandle:
     bounds: tuple[int, int, int, int]
     layout_signature: str
     session_id: str
+    list_item: bool = False
+    list_item_selected: bool = False
+    list_focused: bool = False
+    row_bounds: tuple[int, int, int, int] | None = None
 
 
 class AdbSelectionAdapter:
@@ -175,6 +179,10 @@ class AdbSelectionAdapter:
             fresh = fresh_handles.get(candidate_id)
             if fresh is None or fresh.candidate.recipient_key != original.candidate.recipient_key:
                 return SelectionActionResult.STALE_CAPTURE
+            if fresh.list_item:
+                return self._select_list_item_by_focus(
+                    fresh, identity, fresh_frame.candidate_diagnostics
+                )
             final_identity = self.inspect_device(APPROVED_SERIAL)
             if not self._same_foreground_identity(identity, final_identity):
                 return SelectionActionResult.REJECTED
@@ -193,6 +201,49 @@ class AdbSelectionAdapter:
             return SelectionActionResult.SELECTED
         except (ObservationError, OSError, subprocess.SubprocessError, ValueError):
             return SelectionActionResult.REJECTED
+
+    def _select_list_item_by_focus(
+        self, initial: _CandidateHandle, expected_identity: DeviceIdentity,
+        hierarchy_diagnostics: Sequence[str],
+    ) -> SelectionActionResult:
+        current = initial
+        print(
+            f"Pre-activation UI hierarchy: {'; '.join(hierarchy_diagnostics[:8])}; "
+            f"listFocused={initial.list_focused} rowSelected={initial.list_item_selected} "
+            f"rowBounds={initial.row_bounds}"
+        )
+        for step in range(21):
+            if not current.list_focused:
+                return SelectionActionResult.REJECTED
+            if current.list_item_selected:
+                final_identity = self.inspect_device(APPROVED_SERIAL)
+                if (not self._same_foreground_identity(expected_identity, final_identity)
+                        or final_identity.foreground_package != self._picker_package
+                        or final_identity.declared_permissions or final_identity.granted_permissions
+                        or final_identity.seeder_installed):
+                    return SelectionActionResult.REJECTED
+                print(
+                    f"ListView candidate focused by D-pad after {step} steps; "
+                    f"rowBounds={current.row_bounds}; dispatch=KEYCODE_ENTER"
+                )
+                self._adb_text("shell", "input", "keyevent", "KEYCODE_ENTER")
+                self._pending_selection = current
+                return SelectionActionResult.SELECTED
+            if step == 20:
+                break
+            self._adb_text("shell", "input", "keyevent", "KEYCODE_DPAD_DOWN")
+            frame, handles, foreground = self._capture_snapshot()
+            if (foreground != self._picker_package
+                    or frame.surface_packages != (self._picker_package,)
+                    or frame.external_intent_leak or frame.send_surface_present):
+                return SelectionActionResult.REJECTED
+            moved = handles.get(initial.candidate.candidate_id)
+            if (moved is None or moved.candidate.recipient_key != initial.candidate.recipient_key
+                    or moved.session_id != initial.session_id
+                    or moved.bounds != initial.bounds or moved.row_bounds != initial.row_bounds):
+                return SelectionActionResult.STALE_CAPTURE
+            current = moved
+        return SelectionActionResult.REJECTED
 
     def _capture_snapshot(self) -> tuple[DeviceFrame, dict[str, _CandidateHandle], str]:
         self._require_only_approved_device()
@@ -248,7 +299,12 @@ class AdbSelectionAdapter:
             while ancestor is not None and len(chain) < 6:
                 chain.append(
                     f"{ancestor.attrib.get('class', '')}:{ancestor.attrib.get('resource-id', '')}:"
-                    f"clickable={str(ancestor.attrib.get('clickable') == 'true').lower()}"
+                    f"clickable={str(ancestor.attrib.get('clickable') == 'true').lower()}:"
+                    f"enabled={str(ancestor.attrib.get('enabled') == 'true').lower()}:"
+                    f"focusable={str(ancestor.attrib.get('focusable') == 'true').lower()}:"
+                    f"focused={str(ancestor.attrib.get('focused') == 'true').lower()}:"
+                    f"selected={str(ancestor.attrib.get('selected') == 'true').lower()}:"
+                    f"bounds={ancestor.attrib.get('bounds', '')}"
                 )
                 ancestor = parents.get(ancestor)
             candidate_diagnostics.append(
@@ -374,6 +430,12 @@ class AdbSelectionAdapter:
                     or any(ancestor.attrib.get("visible-to-user") == "false"
                            for ancestor in self._ancestors(click_node, parents))):
                 continue
+            list_focused = any(
+                ancestor.attrib.get("class") == "android.widget.ListView"
+                and ancestor.attrib.get("focused") == "true"
+                for ancestor in self._ancestors(click_node, parents)
+            ) if list_item_fallback else False
+            row_bounds = self._parse_bounds(click_node.attrib.get("bounds", "")) if list_item_fallback else None
             binding = self._bindings[key]
             row_text = " ".join(desc.attrib.get("text", "") for desc in click_node.iter()
                                 if desc.attrib.get("text"))
@@ -381,7 +443,17 @@ class AdbSelectionAdapter:
             candidate_id = hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
             candidate = ContactCandidate(candidate_id, binding.roster_index, binding.recipient_key,
                                          binding.display_name, binding.snapshot_id, True)
-            handles[candidate_id] = _CandidateHandle(candidate, bounds, layout_signature, session_id)
+            handles[candidate_id] = _CandidateHandle(
+                candidate, bounds, layout_signature, session_id,
+                list_item=list_item_fallback,
+                list_item_selected=(list_item_fallback and (
+                    click_node.attrib.get("selected") == "true"
+                    or node.attrib.get("selected") == "true"
+                    or node.attrib.get("focused") == "true"
+                )),
+                list_focused=list_focused,
+                row_bounds=row_bounds,
+            )
         return handles
 
     def _parse_selected_readback(self, root: ET.Element) -> ContactCandidate | None:

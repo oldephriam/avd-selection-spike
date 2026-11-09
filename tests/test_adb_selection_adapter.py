@@ -67,6 +67,8 @@ class FakeProcessRunner:
         self.omit_empty_requested_permissions = omit_empty_requested_permissions
         self.layout_changes_before_tap = False
         self.list_view_semantics = False
+        self.focus_list_item_on_down = False
+        self.list_item_focused = False
         self.picker_hierarchy_reads = 0
         self.selected_name = "Synthetic Contact 001"
         self.screenshot_bytes = PNG_1080_1920
@@ -129,12 +131,15 @@ class FakeProcessRunner:
                         "package": PICKER_PACKAGE,
                         "clickable": "false",
                         "enabled": "true",
+                        "focused": "true",
                         "scrollable": "true",
                         "bounds": "[0,80][1080,1000]",
                     })
                     list_node.append(row)
                     parent.append(list_node)
                     row.attrib["clickable"] = "false"
+                    if self.list_item_focused:
+                        row.attrib["selected"] = "true"
                     stdout = ET.tostring(root, encoding="unicode")
             else:
                 stdout = PROBE_XML.decode().replace("Synthetic Contact 001", self.selected_name)
@@ -145,6 +150,11 @@ class FakeProcessRunner:
                     )
         elif "exec-out" in args and "screencap" in args:
             stdout = self.screenshot_bytes if not text else ""
+        elif "input keyevent KEYCODE_DPAD_DOWN" in joined:
+            self.list_item_focused = self.focus_list_item_on_down
+        elif "input keyevent KEYCODE_ENTER" in joined:
+            if self.list_item_focused:
+                self.state = "probe"
         elif "input tap" in joined:
             self.state = "probe"
         else:
@@ -238,19 +248,42 @@ class AdbSelectionAdapterTests(unittest.TestCase):
     def test_contact_in_nonclickable_listview_row_can_be_selected_and_read_back(self):
         runner = FakeProcessRunner()
         runner.list_view_semantics = True
+        runner.focus_list_item_on_down = True
         adapter = self.make_adapter(runner)
         output = StringIO()
         with redirect_stdout(output):
             result = self.make_probe(adapter).select(RecipientTarget(SNAPSHOT, 0, KEY))
         self.assertEqual(result.status, ProbeStatus.BOUND)
-        self.assertEqual(sum("input tap" in " ".join(c[0]) for c in runner.calls), 1)
+        self.assertEqual(sum("input tap" in " ".join(c[0]) for c in runner.calls), 0)
         diagnostic = output.getvalue()
-        self.assertIn("Pre-tap UI hierarchy", diagnostic)
-        self.assertIn("target=android.widget.LinearLayout:clickable=false", diagnostic)
-        self.assertIn("bounds=(0, 100, 1080, 260)", diagnostic)
-        self.assertIn("tapNode=android.widget.TextView", diagnostic)
-        self.assertIn("tapBounds=(20, 180, 700, 230)", diagnostic)
-        self.assertIn("tap=(360, 205)", diagnostic)
+        self.assertIn("Pre-activation UI hierarchy", diagnostic)
+        self.assertIn("rowBounds=(0, 100, 1080, 260)", diagnostic)
+        self.assertIn("ListView candidate focused by D-pad", diagnostic)
+        self.assertIn("dispatch=KEYCODE_ENTER", diagnostic)
+
+    def test_nonclickable_listview_candidate_uses_verified_dpad_enter_not_touch(self):
+        runner = FakeProcessRunner()
+        runner.list_view_semantics = True
+        runner.focus_list_item_on_down = True
+        adapter = self.make_adapter(runner)
+
+        result = self.make_probe(adapter).select(RecipientTarget(SNAPSHOT, 0, KEY))
+
+        self.assertEqual(result.status, ProbeStatus.BOUND)
+        key_events = [call[0][-1] for call in runner.calls if "input keyevent" in " ".join(call[0])]
+        self.assertEqual(key_events, ["KEYCODE_DPAD_DOWN", "KEYCODE_ENTER"])
+        self.assertFalse(any("input tap" in " ".join(call[0]) for call in runner.calls))
+
+    def test_listview_enter_is_not_sent_until_target_row_is_observed_selected(self):
+        runner = FakeProcessRunner()
+        runner.list_view_semantics = True
+        adapter = self.make_adapter(runner)
+
+        result = self.make_probe(adapter).select(RecipientTarget(SNAPSHOT, 0, KEY))
+
+        self.assertNotEqual(result.status, ProbeStatus.BOUND)
+        self.assertFalse(any("input keyevent KEYCODE_ENTER" in " ".join(call[0]) for call in runner.calls))
+        self.assertFalse(any("input tap" in " ".join(call[0]) for call in runner.calls))
 
     def test_capture_exposes_non_control_picker_text_for_diagnostics(self):
         runner = FakeProcessRunner()
