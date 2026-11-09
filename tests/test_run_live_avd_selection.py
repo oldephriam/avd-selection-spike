@@ -98,6 +98,18 @@ class LiveAvdCommandTests(unittest.TestCase):
 
         self.assertEqual(live.fixture_phone_data_id(FakeAvd()), "900")
 
+    def test_instrumentation_failure_output_is_sanitized_and_bounded(self) -> None:
+        binding = live.fixture_binding()
+        raw_output = (
+            f"FAIL: {binding.display_name} {binding.recipient_key} fixture_data_id=778899 "
+            + "x" * 5000
+        )
+        safe = live.sanitized_instrumentation_output(raw_output, binding, "778899")
+        self.assertNotIn(binding.display_name, safe)
+        self.assertNotIn(binding.recipient_key, safe)
+        self.assertNotIn("778899", safe)
+        self.assertLessEqual(len(safe), 8000)
+
     def test_phone_row_alone_is_not_enough_without_aggregated_contact(self) -> None:
         class FakeAvd:
             def command(self, *args, **kwargs):

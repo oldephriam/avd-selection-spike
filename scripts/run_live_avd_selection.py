@@ -252,6 +252,19 @@ def fixture_visible_in_provider(avd: AVD) -> bool:
     return aggregated
 
 
+def sanitized_instrumentation_output(output: str, binding: RosterBinding, fixture_data_id: str) -> str:
+    text = str(output)
+    for private_value in (binding.display_name, binding.recipient_key, fixture_data_id):
+        if private_value:
+            text = text.replace(private_value, "[fixture]")
+    lines = []
+    for line in text.splitlines()[-40:]:
+        safe_line = re.sub(r"\d+", "[n]", line).strip()
+        if safe_line:
+            lines.append(safe_line[:240])
+    return "\n".join(lines)[:8000]
+
+
 def fixture_phone_data_id(avd: AVD) -> str:
     binding = fixture_binding()
     source = (ROOT / "android/seeder/src/main/java/com/pacer/test/seeder/SeederActivity.java").read_text(encoding="utf-8")
@@ -353,6 +366,8 @@ def main() -> int:
             timeout=120,
         ))
         if ("OK (1 test)" not in harness_output or "INSTRUMENTATION_CODE: -1" not in harness_output):
+            print("Instrumentation result (sanitized):")
+            print(sanitized_instrumentation_output(harness_output, binding, fixture_data_id))
             raise RuntimeError("in-process picker item-click instrumentation did not pass its bounded test")
         deadline = time.monotonic() + 30
         foreground = ""
