@@ -11,6 +11,9 @@ import android.widget.ListAdapter;
 import android.widget.ListView;
 
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitor;
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
+import androidx.test.runner.lifecycle.Stage;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -42,52 +45,73 @@ public final class PhonePickerItemClickTest {
                 expectedDataId.matches("[1-9][0-9]{0,18}"));
         assertTrue("fixture display name is missing", !expectedDisplayName.isEmpty());
 
-        Instrumentation.ActivityMonitor monitor = instrumentation.addMonitor(
-                PICKER_ACTIVITY, null, false);
-        try {
-            Intent probe = new Intent();
-            probe.setClassName(PROBE_PACKAGE, PROBE_ACTIVITY);
-            probe.putExtra("pacer_test_launch_picker", true);
-            probe.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            instrumentation.getContext().startActivity(probe);
+        ActivityLifecycleMonitor lifecycleMonitor = ActivityLifecycleMonitorRegistry.getInstance();
+        Intent probe = new Intent();
+        probe.setClassName(PROBE_PACKAGE, PROBE_ACTIVITY);
+        probe.putExtra("pacer_test_launch_picker", true);
+        probe.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        instrumentation.getContext().startActivity(probe);
 
-            Activity picker = instrumentation.waitForMonitorWithTimeout(
-                    monitor, LOAD_TIMEOUT_MILLIS);
-            assertNotNull("pinned ContactSelectionActivity did not resume", picker);
-            assertEquals("unexpected package for observed picker", "com.android.contacts",
-                    picker.getPackageName());
-            assertEquals("unexpected picker activity", PICKER_ACTIVITY, picker.getClass().getName());
-
-            final ClickOutcome[] outcome = new ClickOutcome[1];
-            final long deadline = android.os.SystemClock.elapsedRealtime() + LOAD_TIMEOUT_MILLIS;
-            while (android.os.SystemClock.elapsedRealtime() < deadline) {
-                instrumentation.runOnMainSync(() -> {
-                    outcome[0] = tryClickExactRow(picker, expectedDataId, expectedDisplayName);
-                });
-                if (outcome[0] != null && outcome[0].clicked) {
-                    break;
-                }
-                Thread.sleep(250);
+        final Activity[] pickerState = new Activity[1];
+        final long resumeDeadline = android.os.SystemClock.elapsedRealtime() + LOAD_TIMEOUT_MILLIS;
+        while (android.os.SystemClock.elapsedRealtime() < resumeDeadline) {
+            instrumentation.runOnMainSync(() -> pickerState[0] = findResumedPicker(lifecycleMonitor));
+            if (pickerState[0] != null) {
+                break;
             }
-            if (outcome[0] == null || !outcome[0].clicked) {
-                System.out.println("PICKER_VIEW_DIAGNOSTIC_BEGIN");
-                System.out.println("PICKER_ACTIVITY_STATE: windowFocus=" + picker.hasWindowFocus()
-                        + "; finishing=" + picker.isFinishing());
-                if (outcome[0] != null) {
-                    for (String line : outcome[0].diagnostic.split("\n")) {
-                        System.out.println("PICKER_VIEW: " + line);
-                    }
-                }
-            }
-            assertTrue("fixture row could not be selected through the picker: "
-                            + (outcome[0] == null ? "no activity snapshot" : outcome[0].diagnostic),
-                    outcome[0] != null && outcome[0].clicked);
-            System.out.println("PERFORM_ITEM_CLICK target=verified-fixture-data-row; "
-                    + "position=" + outcome[0].position + "; returned=" + outcome[0].listenerInvoked);
-            assertTrue("ListView did not dispatch its item-click listener", outcome[0].listenerInvoked);
-        } finally {
-            instrumentation.removeMonitor(monitor);
+            Thread.sleep(250);
         }
+        assertNotNull("pinned ContactSelectionActivity did not reach RESUMED", pickerState[0]);
+        assertEquals("unexpected package for observed picker", "com.android.contacts",
+                pickerState[0].getPackageName());
+        assertEquals("unexpected picker activity", PICKER_ACTIVITY, pickerState[0].getClass().getName());
+
+        final ClickOutcome[] outcome = new ClickOutcome[1];
+        final long loadDeadline = android.os.SystemClock.elapsedRealtime() + LOAD_TIMEOUT_MILLIS;
+        while (android.os.SystemClock.elapsedRealtime() < loadDeadline) {
+            instrumentation.runOnMainSync(() -> {
+                Activity resumedPicker = findResumedPicker(lifecycleMonitor);
+                if (resumedPicker == null) {
+                    outcome[0] = new ClickOutcome(false, false, -1,
+                            "ContactSelectionActivity is no longer RESUMED");
+                    return;
+                }
+                pickerState[0] = resumedPicker;
+                outcome[0] = tryClickExactRow(resumedPicker, expectedDataId, expectedDisplayName);
+            });
+            if (outcome[0] != null && outcome[0].clicked) {
+                break;
+            }
+            Thread.sleep(250);
+        }
+        if (outcome[0] == null || !outcome[0].clicked) {
+            System.out.println("PICKER_VIEW_DIAGNOSTIC_BEGIN");
+            System.out.println("PICKER_ACTIVITY_STATE: " + (pickerState[0] == null
+                    ? "no resumed picker activity" : "windowFocus=" + pickerState[0].hasWindowFocus()
+                    + "; finishing=" + pickerState[0].isFinishing()));
+            if (outcome[0] != null) {
+                for (String line : outcome[0].diagnostic.split("\n")) {
+                    System.out.println("PICKER_VIEW: " + line);
+                }
+            }
+        }
+        assertTrue("fixture row could not be selected through the resumed picker: "
+                        + (outcome[0] == null ? "no activity snapshot" : outcome[0].diagnostic),
+                outcome[0] != null && outcome[0].clicked);
+        System.out.println("PERFORM_ITEM_CLICK target=verified-fixture-data-row; "
+                + "position=" + outcome[0].position + "; returned=" + outcome[0].listenerInvoked);
+        assertTrue("ListView did not dispatch its item-click listener", outcome[0].listenerInvoked);
+    }
+
+    private static Activity findResumedPicker(ActivityLifecycleMonitor lifecycleMonitor) {
+        for (Activity activity : lifecycleMonitor.getActivitiesInStage(Stage.RESUMED)) {
+            if (PICKER_ACTIVITY.equals(activity.getClass().getName())
+                    && "com.android.contacts".equals(activity.getPackageName())
+                    && !activity.isFinishing() && !activity.isDestroyed()) {
+                return activity;
+            }
+        }
+        return null;
     }
 
     private static ClickOutcome tryClickExactRow(Activity picker, String expectedDataId,
@@ -97,6 +121,13 @@ public final class PhonePickerItemClickTest {
             View decor = picker.getWindow() == null ? null : picker.getWindow().getDecorView();
             return new ClickOutcome(false, false, -1,
                     "android.R.id.list missing; hierarchy=" + describePickerViews(picker, decor));
+        }
+        if (!picker.hasWindowFocus()) {
+            return new ClickOutcome(false, false, -1, "resumed picker does not own window focus");
+        }
+        if (!list.isAttachedToWindow() || !list.isShown()) {
+            return new ClickOutcome(false, false, -1,
+                    "ListView is not attached and shown; hierarchy=" + describePickerViews(picker, list));
         }
         if (list.getAdapter() == null) {
             return new ClickOutcome(false, false, -1,
@@ -137,8 +168,9 @@ public final class PhonePickerItemClickTest {
             return new ClickOutcome(false, false, matchPosition, "fixture row is not currently visible");
         }
         View row = list.getChildAt(childIndex);
-        if (row == null || !row.isEnabled()) {
-            return new ClickOutcome(false, false, matchPosition, "fixture row view is unavailable or disabled");
+        if (row == null || !row.isEnabled() || !row.isAttachedToWindow() || !row.isShown()) {
+            return new ClickOutcome(false, false, matchPosition,
+                    "fixture row view is unavailable, hidden, or detached");
         }
         boolean listenerInvoked = list.performItemClick(
                 row, matchPosition, list.getItemIdAtPosition(matchPosition));
