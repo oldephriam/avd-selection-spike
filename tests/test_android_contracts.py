@@ -86,6 +86,7 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn("getItemIdAtPosition", harness)
         self.assertIn("describePickerViews", harness)
         self.assertIn("android.R.id.list missing", harness)
+        self.assertIn("PICKER_VIEW_DIAGNOSTIC_BEGIN", harness)
         self.assertIn("Base64.decode", harness)
         self.assertNotIn("android.test.", harness)
         self.assertNotIn("input tap", harness)

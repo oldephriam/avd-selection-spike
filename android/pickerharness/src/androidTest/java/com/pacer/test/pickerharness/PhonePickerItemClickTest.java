@@ -69,6 +69,16 @@ public final class PhonePickerItemClickTest {
                 }
                 Thread.sleep(250);
             }
+            if (outcome[0] == null || !outcome[0].clicked) {
+                System.out.println("PICKER_VIEW_DIAGNOSTIC_BEGIN");
+                System.out.println("PICKER_ACTIVITY_STATE: windowFocus=" + picker.hasWindowFocus()
+                        + "; finishing=" + picker.isFinishing());
+                if (outcome[0] != null) {
+                    for (String line : outcome[0].diagnostic.split("\\n")) {
+                        System.out.println("PICKER_VIEW: " + line);
+                    }
+                }
+            }
             assertTrue("fixture row could not be selected through the picker: "
                             + (outcome[0] == null ? "no activity snapshot" : outcome[0].diagnostic),
                     outcome[0] != null && outcome[0].clicked);
@@ -139,16 +149,16 @@ public final class PhonePickerItemClickTest {
         if (root == null) {
             return "window/decor unavailable";
         }
-        StringBuilder description = new StringBuilder();
+        StringBuilder description = new StringBuilder("windowFocus=")
+                .append(activity.hasWindowFocus()).append("; finishing=").append(activity.isFinishing());
         View[] pending = new View[64];
         int pendingCount = 0;
+        int visited = 0;
         pending[pendingCount++] = root;
-        while (pendingCount > 0 && description.length() < 4000) {
+        while (pendingCount > 0 && visited < 32) {
             View view = pending[--pendingCount];
-            if (description.length() > 0) {
-                description.append(" | ");
-            }
-            description.append(view.getClass().getSimpleName()).append('#');
+            visited++;
+            description.append("\\n").append(view.getClass().getSimpleName()).append('#');
             int id = view.getId();
             if (id == View.NO_ID) {
                 description.append("no-id");
