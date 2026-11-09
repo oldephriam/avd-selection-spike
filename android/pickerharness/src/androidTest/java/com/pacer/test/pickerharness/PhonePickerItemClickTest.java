@@ -69,9 +69,9 @@ public final class PhonePickerItemClickTest {
                 }
                 Thread.sleep(250);
             }
-            assertNotNull("picker ListView or adapter was not ready before the bounded deadline", outcome[0]);
-            assertTrue("fixture row was not uniquely present and visible: " + outcome[0].diagnostic,
-                    outcome[0].clicked);
+            assertTrue("fixture row could not be selected through the picker: "
+                            + (outcome[0] == null ? "no activity snapshot" : outcome[0].diagnostic),
+                    outcome[0] != null && outcome[0].clicked);
             System.out.println("PERFORM_ITEM_CLICK target=verified-fixture-data-row; "
                     + "position=" + outcome[0].position + "; returned=" + outcome[0].listenerInvoked);
             assertTrue("ListView did not dispatch its item-click listener", outcome[0].listenerInvoked);
@@ -83,8 +83,14 @@ public final class PhonePickerItemClickTest {
     private static ClickOutcome tryClickExactRow(Activity picker, String expectedDataId,
                                                   String expectedDisplayName) {
         ListView list = picker.findViewById(android.R.id.list);
-        if (list == null || list.getAdapter() == null) {
-            return null;
+        if (list == null) {
+            View decor = picker.getWindow() == null ? null : picker.getWindow().getDecorView();
+            return new ClickOutcome(false, false, -1,
+                    "android.R.id.list missing; hierarchy=" + describePickerViews(picker, decor));
+        }
+        if (list.getAdapter() == null) {
+            return new ClickOutcome(false, false, -1,
+                    "ListView exists without adapter; hierarchy=" + describePickerViews(picker, list));
         }
         ListAdapter adapter = list.getAdapter();
         int matchPosition = -1;
@@ -127,6 +133,44 @@ public final class PhonePickerItemClickTest {
         boolean listenerInvoked = list.performItemClick(
                 row, matchPosition, list.getItemIdAtPosition(matchPosition));
         return new ClickOutcome(true, listenerInvoked, matchPosition, "clicked");
+    }
+
+    private static String describePickerViews(Activity activity, View root) {
+        if (root == null) {
+            return "window/decor unavailable";
+        }
+        StringBuilder description = new StringBuilder();
+        View[] pending = new View[64];
+        int pendingCount = 0;
+        pending[pendingCount++] = root;
+        while (pendingCount > 0 && description.length() < 4000) {
+            View view = pending[--pendingCount];
+            if (description.length() > 0) {
+                description.append(" | ");
+            }
+            description.append(view.getClass().getSimpleName()).append('#');
+            int id = view.getId();
+            if (id == View.NO_ID) {
+                description.append("no-id");
+            } else {
+                try {
+                    description.append(activity.getResources().getResourceName(id));
+                } catch (RuntimeException ignored) {
+                    description.append("id");
+                }
+            }
+            description.append(":visibility=").append(view.getVisibility())
+                    .append(":enabled=").append(view.isEnabled());
+            if (view instanceof android.view.ViewGroup) {
+                android.view.ViewGroup group = (android.view.ViewGroup) view;
+                description.append(":children=").append(group.getChildCount());
+                for (int i = group.getChildCount() - 1;
+                     i >= 0 && pendingCount < pending.length; i--) {
+                    pending[pendingCount++] = group.getChildAt(i);
+                }
+            }
+        }
+        return description.toString();
     }
 
     private static final class ClickOutcome {
