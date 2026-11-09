@@ -10,17 +10,17 @@ import android.view.View;
 import android.widget.ListAdapter;
 import android.widget.ListView;
 
-import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-@RunWith(AndroidJUnit4.class)
+@RunWith(JUnit4.class)
 public final class PhonePickerItemClickTest {
     private static final String PROBE_PACKAGE = "com.pacer.test.probe";
     private static final String PROBE_ACTIVITY = "com.pacer.test.probe.ProbeActivity";

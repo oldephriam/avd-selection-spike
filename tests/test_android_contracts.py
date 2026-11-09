@@ -63,7 +63,7 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn('applicationId = "com.android.contacts"', build)
         self.assertIn('testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"', build)
         self.assertIn('androidTestImplementation("androidx.test:runner:', build)
-        self.assertIn('androidTestImplementation("androidx.test.ext:junit:', build)
+        self.assertNotIn('androidx.test.ext:junit', build)
         gradle_properties = (ROOT / "gradle.properties").read_text(encoding="utf-8")
         self.assertIn("android.useAndroidX=true", gradle_properties)
         self.assertNotIn("android.test.", build)
@@ -79,7 +79,8 @@ class AndroidContractTests(unittest.TestCase):
         self.assertEqual(instrumentation.get("{http://schemas.android.com/tools}node"), "replace")
         harness = (ROOT / module / "src/androidTest/java/com/pacer/test/pickerharness/"
                    "PhonePickerItemClickTest.java").read_text(encoding="utf-8")
-        self.assertIn("@RunWith(AndroidJUnit4.class)", harness)
+        self.assertIn("@RunWith(JUnit4.class)", harness)
+        self.assertIn("org.junit.runners.JUnit4", harness)
         self.assertIn("InstrumentationRegistry.getArguments()", harness)
         self.assertIn("performItemClick", harness)
         self.assertIn("getItemIdAtPosition", harness)
