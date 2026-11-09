@@ -224,10 +224,11 @@ class AdbSelectionAdapterTests(unittest.TestCase):
         runner = FakeProcessRunner()
         adapter = self.make_adapter(runner)
         frame = adapter.capture(SERIAL)
-        self.assertIn(
-            "key-match:clickable=true:enabled=true:bounds=true:visible=true",
-            frame.candidate_diagnostics,
-        )
+        diagnostic = frame.candidate_diagnostics[0]
+        self.assertTrue(diagnostic.startswith(
+            "key-match:clickable=true:enabled=true:bounds=true:visible=true:hierarchy="
+        ))
+        self.assertIn("android.widget.TextView", diagnostic)
 
     def test_source_capture_binding_rejects_stale_candidate_without_tap(self):
         runner = FakeProcessRunner()

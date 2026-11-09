@@ -235,12 +235,21 @@ class AdbSelectionAdapter:
             if visible and click_node is not None:
                 visible = all(ancestor.attrib.get("visible-to-user") != "false"
                               for ancestor in self._ancestors(click_node, parents))
+            chain = []
+            ancestor = node
+            while ancestor is not None and len(chain) < 6:
+                chain.append(
+                    f"{ancestor.attrib.get('class', '')}:{ancestor.attrib.get('resource-id', '')}:"
+                    f"clickable={str(ancestor.attrib.get('clickable') == 'true').lower()}"
+                )
+                ancestor = parents.get(ancestor)
             candidate_diagnostics.append(
-                "key-match:clickable={}:enabled={}:bounds={}:visible={}".format(
+                "key-match:clickable={}:enabled={}:bounds={}:visible={}:hierarchy={}".format(
                     str(click_node is not None).lower(),
                     str(click_node is not None and click_node.attrib.get("enabled") == "true").lower(),
                     str(valid_bounds).lower(),
                     str(visible).lower(),
+                    chain,
                 )
             )
         all_text = " ".join(" ".join((node.attrib.get("text", ""),
