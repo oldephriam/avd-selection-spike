@@ -267,13 +267,29 @@ def enable_root_adb_for_instrumentation(avd: AVD) -> None:
         raise RuntimeError("root adbd did not yield uid 0 for instrumentation launch")
 
 
+def encode_instrumentation_value(value: str) -> str:
+    return base64.b64encode(value.encode("utf-8")).decode("ascii")
+
+
 def encode_instrumentation_display_name(display_name: str) -> str:
-    return base64.b64encode(display_name.encode("utf-8")).decode("ascii")
+    return encode_instrumentation_value(display_name)
+
+
+def fixture_phone_number() -> str:
+    source = (ROOT / "android/seeder/src/main/java/com/pacer/test/seeder/SeederActivity.java").read_text(encoding="utf-8")
+    phone = re.search(r'FIXTURE_RECIPIENT_KEY[ ]*=[ ]*"([^"]+)"', source)
+    if not phone:
+        raise RuntimeError("synthetic fixture phone value is missing")
+    return phone.group(1)
 
 
 def sanitized_instrumentation_output(output: str, binding: RosterBinding, fixture_data_id: str) -> str:
     text = str(output)
-    for private_value in (binding.display_name, binding.recipient_key, fixture_data_id):
+    fixture_phone = fixture_phone_number()
+    fixture_phone_b64 = encode_instrumentation_value(fixture_phone)
+    for private_value in (
+        binding.display_name, binding.recipient_key, fixture_data_id, fixture_phone, fixture_phone_b64,
+    ):
         if private_value:
             text = text.replace(private_value, "[fixture]")
     source_lines = text.splitlines()
@@ -288,17 +304,14 @@ def sanitized_instrumentation_output(output: str, binding: RosterBinding, fixtur
 
 def fixture_phone_data_id(avd: AVD) -> str:
     binding = fixture_binding()
-    source = (ROOT / "android/seeder/src/main/java/com/pacer/test/seeder/SeederActivity.java").read_text(encoding="utf-8")
-    phone = re.search(r'FIXTURE_RECIPIENT_KEY[ ]*=[ ]*"([^"]+)"', source)
-    if not phone:
-        raise RuntimeError("synthetic fixture phone value is missing")
+    phone_number = fixture_phone_number()
     rows = str(avd.command(
         "shell", "content", "query",
         "--uri", "content://com.android.contacts/data/phones",
     ))
     matches = []
     for line in rows.splitlines():
-        if binding.display_name not in line or phone.group(1) not in line:
+        if binding.display_name not in line or phone_number not in line:
             continue
         if "vnd.android.cursor.item/phone" not in line:
             continue
@@ -354,6 +367,7 @@ def main() -> int:
         avd.wait_for_text("SEEDED: one synthetic contact is ready")
         wait_for_fixture_provider_visibility(avd)
         fixture_data_id = fixture_phone_data_id(avd)
+        fixture_phone = fixture_phone_number()
         print("Provider verified: one joined phone Data row and exact fixture identifier captured.")
         avd.command("uninstall", SEEDER, timeout=60)
         installed = str(avd.command("shell", "pm", "list", "packages", SEEDER)).strip()
@@ -390,6 +404,7 @@ def main() -> int:
             "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",
             "-e", "fixture_data_id", fixture_data_id,
             "-e", "fixture_display_name_b64", encode_instrumentation_display_name(binding.display_name),
+            "-e", "fixture_phone_b64", encode_instrumentation_value(fixture_phone),
             "com.android.contacts.test/androidx.test.runner.AndroidJUnitRunner",
             timeout=120,
             check=False,

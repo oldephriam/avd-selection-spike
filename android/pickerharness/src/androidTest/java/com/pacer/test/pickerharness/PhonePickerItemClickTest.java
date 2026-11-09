@@ -30,6 +30,7 @@ public final class PhonePickerItemClickTest {
     private static final String PICKER_ACTIVITY = "com.android.contacts.activities.ContactSelectionActivity";
     private static final String PHONE_DATA_ID_ARGUMENT = "fixture_data_id";
     private static final String DISPLAY_NAME_ARGUMENT = "fixture_display_name_b64";
+    private static final String PHONE_NUMBER_ARGUMENT = "fixture_phone_b64";
     private static final long LOAD_TIMEOUT_MILLIS = 30000;
 
     @Test
@@ -41,9 +42,16 @@ public final class PhonePickerItemClickTest {
         String expectedDisplayName = new String(
                 Base64.decode(encodedDisplayName, Base64.DEFAULT),
                 java.nio.charset.StandardCharsets.UTF_8);
+        String encodedPhone = arguments.getString(PHONE_NUMBER_ARGUMENT, "");
+        String expectedPhoneNumber = new String(
+                Base64.decode(encodedPhone, Base64.DEFAULT),
+                java.nio.charset.StandardCharsets.UTF_8);
+        String normalizedExpectedPhone = normalizePhoneNumber(expectedPhoneNumber);
         assertTrue("fixture Data row id must be a positive decimal integer",
                 expectedDataId.matches("[1-9][0-9]{0,18}"));
         assertTrue("fixture display name is missing", !expectedDisplayName.isEmpty());
+        assertTrue("fixture phone number is not a valid normalized US number",
+                normalizedExpectedPhone.matches("[2-9][0-9]{2}[2-9][0-9]{6}"));
 
         ActivityLifecycleMonitor lifecycleMonitor = ActivityLifecycleMonitorRegistry.getInstance();
         Intent probe = new Intent();
@@ -77,7 +85,8 @@ public final class PhonePickerItemClickTest {
                     return;
                 }
                 pickerState[0] = resumedPicker;
-                outcome[0] = tryClickExactRow(resumedPicker, expectedDataId, expectedDisplayName);
+                outcome[0] = tryClickExactRow(resumedPicker, expectedDataId,
+                        expectedDisplayName, normalizedExpectedPhone);
             });
             if (outcome[0] != null && outcome[0].clicked) {
                 break;
@@ -103,6 +112,17 @@ public final class PhonePickerItemClickTest {
         assertTrue("ListView did not dispatch its item-click listener", outcome[0].listenerInvoked);
     }
 
+    private static String normalizePhoneNumber(String value) {
+        if (value == null) {
+            return "";
+        }
+        String digits = value.replaceAll("\\D", "");
+        if (digits.length() == 11 && digits.startsWith("1")) {
+            digits = digits.substring(1);
+        }
+        return digits;
+    }
+
     private static Activity findResumedPicker(ActivityLifecycleMonitor lifecycleMonitor) {
         for (Activity activity : lifecycleMonitor.getActivitiesInStage(Stage.RESUMED)) {
             if (PICKER_ACTIVITY.equals(activity.getClass().getName())
@@ -115,7 +135,8 @@ public final class PhonePickerItemClickTest {
     }
 
     private static ClickOutcome tryClickExactRow(Activity picker, String expectedDataId,
-                                                  String expectedDisplayName) {
+                                                  String expectedDisplayName,
+                                                  String normalizedExpectedPhone) {
         ListView list = picker.findViewById(android.R.id.list);
         if (list == null) {
             View decor = picker.getWindow() == null ? null : picker.getWindow().getDecorView();
@@ -136,45 +157,54 @@ public final class PhonePickerItemClickTest {
         ListAdapter adapter = list.getAdapter();
         int matchPosition = -1;
         int matchCount = 0;
-        int cursorItemCount = 0;
         boolean phoneIdMatches = false;
         boolean displayNameMatches = false;
+        boolean phoneNumberMatches = false;
         boolean hasIdColumn = false;
         boolean hasDisplayNameColumn = false;
+        boolean hasPhoneNumberColumn = false;
         for (int position = 0; position < adapter.getCount(); position++) {
             Object item = adapter.getItem(position);
             if (!(item instanceof Cursor)) {
                 continue;
             }
             Cursor cursor = (Cursor) item;
-            cursorItemCount++;
             int idColumn = cursor.getColumnIndex("_id");
             int nameColumn = cursor.getColumnIndex("display_name");
             if (nameColumn < 0) {
                 nameColumn = cursor.getColumnIndex("display_name_primary");
             }
+            int phoneColumn = cursor.getColumnIndex(
+                    android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER);
+            if (phoneColumn < 0) {
+                phoneColumn = cursor.getColumnIndex("number");
+            }
             hasIdColumn |= idColumn >= 0;
             hasDisplayNameColumn |= nameColumn >= 0;
-            if (idColumn < 0 || nameColumn < 0) {
+            hasPhoneNumberColumn |= phoneColumn >= 0;
+            if (nameColumn < 0 || phoneColumn < 0) {
                 continue;
             }
-            boolean phoneIdMatched = expectedDataId.equals(cursor.getString(idColumn));
+            boolean phoneIdMatched = idColumn >= 0
+                    && expectedDataId.equals(cursor.getString(idColumn));
             boolean displayNameMatched = expectedDisplayName.equals(cursor.getString(nameColumn));
+            boolean phoneNumberMatched = normalizedExpectedPhone.equals(
+                    normalizePhoneNumber(cursor.getString(phoneColumn)));
             phoneIdMatches |= phoneIdMatched;
             displayNameMatches |= displayNameMatched;
-            if (phoneIdMatched && displayNameMatched) {
+            phoneNumberMatches |= phoneNumberMatched;
+            if (phoneNumberMatched && displayNameMatched) {
                 matchPosition = position;
                 matchCount++;
             }
         }
         if (matchCount == 0) {
             return new ClickOutcome(false, false, -1,
-                    "no-match: adapter=" + adapter.getClass().getSimpleName()
-                            + "; items=" + adapter.getCount() + "; cursors=" + cursorItemCount
+                    "no-match: items=" + adapter.getCount()
                             + "; idCol=" + hasIdColumn + "; nameCol=" + hasDisplayNameColumn
-                            + "; phoneIdMatches=" + phoneIdMatches
-                            + "; displayNameMatches=" + displayNameMatches
-                            + "; children=" + list.getChildCount());
+                            + "; phoneCol=" + hasPhoneNumberColumn
+                            + "; idMatch=" + phoneIdMatches + "; nameMatch=" + displayNameMatches
+                            + "; phoneMatch=" + phoneNumberMatches);
         }
         if (matchCount != 1) {
             return new ClickOutcome(false, false, -1, "fixture data row was not unique");

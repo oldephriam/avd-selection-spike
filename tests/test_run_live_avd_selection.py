@@ -143,9 +143,11 @@ class LiveAvdCommandTests(unittest.TestCase):
 
     def test_instrumentation_failure_output_is_sanitized_and_bounded(self) -> None:
         binding = live.fixture_binding()
+        phone = live.fixture_phone_number()
+        encoded_phone = live.encode_instrumentation_value(phone)
         raw_output = (
             f"ERROR: invalid invocation for {binding.display_name} {binding.recipient_key} "
-            "fixture_data_id=778899\n"
+            f"fixture_data_id=778899 phone={phone} fixture_phone_b64={encoded_phone}\n"
             + "usage\n" * 50
         )
         safe = live.sanitized_instrumentation_output(raw_output, binding, "778899")
@@ -153,6 +155,8 @@ class LiveAvdCommandTests(unittest.TestCase):
         self.assertNotIn(binding.display_name, safe)
         self.assertNotIn(binding.recipient_key, safe)
         self.assertNotIn("778899", safe)
+        self.assertNotIn(phone, safe)
+        self.assertNotIn(encoded_phone, safe)
         self.assertLessEqual(len(safe), 8000)
 
     def test_instrumentation_display_name_argument_is_shell_safe_and_lossless(self) -> None:
@@ -160,6 +164,13 @@ class LiveAvdCommandTests(unittest.TestCase):
         encoded = live.encode_instrumentation_display_name(binding.display_name)
         self.assertNotIn(" ", encoded)
         self.assertEqual(base64.b64decode(encoded).decode("utf-8"), binding.display_name)
+
+    def test_instrumentation_phone_argument_is_shell_safe_and_lossless(self) -> None:
+        phone = live.fixture_phone_number()
+        encoded = live.encode_instrumentation_value(phone)
+        self.assertNotIn(phone, encoded)
+        self.assertNotIn("+", encoded)
+        self.assertEqual(base64.b64decode(encoded).decode("utf-8"), phone)
 
     def test_phone_row_alone_is_not_enough_without_aggregated_contact(self) -> None:
         class FakeAvd:
