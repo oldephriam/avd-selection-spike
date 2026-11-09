@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 from pathlib import Path
@@ -252,13 +253,19 @@ def fixture_visible_in_provider(avd: AVD) -> bool:
     return aggregated
 
 
+def encode_instrumentation_display_name(display_name: str) -> str:
+    return base64.b64encode(display_name.encode("utf-8")).decode("ascii")
+
+
 def sanitized_instrumentation_output(output: str, binding: RosterBinding, fixture_data_id: str) -> str:
     text = str(output)
     for private_value in (binding.display_name, binding.recipient_key, fixture_data_id):
         if private_value:
             text = text.replace(private_value, "[fixture]")
+    source_lines = text.splitlines()
+    selected_lines = source_lines if len(source_lines) <= 40 else source_lines[:8] + source_lines[-32:]
     lines = []
-    for line in text.splitlines()[-40:]:
+    for line in selected_lines:
         safe_line = re.sub(r"\d+", "[n]", line).strip()
         if safe_line:
             lines.append(safe_line[:240])
@@ -361,7 +368,7 @@ def main() -> int:
             "shell", "am", "instrument", "-w",
             "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",
             "-e", "fixture_data_id", fixture_data_id,
-            "-e", "fixture_display_name", binding.display_name,
+            "-e", "fixture_display_name_b64", encode_instrumentation_display_name(binding.display_name),
             "com.pacer.test.pickerharness/.PickerInstrumentationRunner",
             timeout=120,
         ))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import base64
 import re
 import sys
 import unittest
@@ -101,14 +102,22 @@ class LiveAvdCommandTests(unittest.TestCase):
     def test_instrumentation_failure_output_is_sanitized_and_bounded(self) -> None:
         binding = live.fixture_binding()
         raw_output = (
-            f"FAIL: {binding.display_name} {binding.recipient_key} fixture_data_id=778899 "
-            + "x" * 5000
+            f"ERROR: invalid invocation for {binding.display_name} {binding.recipient_key} "
+            "fixture_data_id=778899\n"
+            + "usage\n" * 50
         )
         safe = live.sanitized_instrumentation_output(raw_output, binding, "778899")
+        self.assertTrue(safe.startswith("ERROR: invalid invocation"))
         self.assertNotIn(binding.display_name, safe)
         self.assertNotIn(binding.recipient_key, safe)
         self.assertNotIn("778899", safe)
         self.assertLessEqual(len(safe), 8000)
+
+    def test_instrumentation_display_name_argument_is_shell_safe_and_lossless(self) -> None:
+        binding = live.fixture_binding()
+        encoded = live.encode_instrumentation_display_name(binding.display_name)
+        self.assertNotIn(" ", encoded)
+        self.assertEqual(base64.b64decode(encoded).decode("utf-8"), binding.display_name)
 
     def test_phone_row_alone_is_not_enough_without_aggregated_contact(self) -> None:
         class FakeAvd:

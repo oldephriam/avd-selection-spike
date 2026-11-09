@@ -76,6 +76,8 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn("getRunnerArguments", runner)
         self.assertIn("performItemClick", harness)
         self.assertIn("getItemIdAtPosition", harness)
+        self.assertIn("Base64.decode", harness)
+        self.assertIn("fixture_display_name_b64", harness)
         self.assertNotIn("input tap", harness)
 
     def test_seeder_has_only_write_contacts_permission_and_is_separate_package(self) -> None:

@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.os.Bundle;
 import android.test.InstrumentationTestCase;
+import android.util.Base64;
 import android.view.View;
 import android.widget.ListAdapter;
 import android.widget.ListView;
@@ -14,14 +15,17 @@ public final class PhonePickerItemClickTest extends InstrumentationTestCase {
     private static final String PROBE_ACTIVITY = "com.pacer.test.probe.ProbeActivity";
     private static final String PICKER_ACTIVITY = "com.android.contacts.activities.ContactSelectionActivity";
     private static final String PHONE_DATA_ID_ARGUMENT = "fixture_data_id";
-    private static final String DISPLAY_NAME_ARGUMENT = "fixture_display_name";
+    private static final String DISPLAY_NAME_ARGUMENT = "fixture_display_name_b64";
     private static final long LOAD_TIMEOUT_MILLIS = 30000;
 
     public void testExactPhoneDataRowUsesListViewPerformItemClick() throws Exception {
         PickerInstrumentationRunner runner = (PickerInstrumentationRunner) getInstrumentation();
         Bundle arguments = runner.getRunnerArguments();
         String expectedDataId = arguments.getString(PHONE_DATA_ID_ARGUMENT, "");
-        String expectedDisplayName = arguments.getString(DISPLAY_NAME_ARGUMENT, "");
+        String encodedDisplayName = arguments.getString(DISPLAY_NAME_ARGUMENT, "");
+        String expectedDisplayName = new String(
+                Base64.decode(encodedDisplayName, Base64.DEFAULT),
+                java.nio.charset.StandardCharsets.UTF_8);
         assertTrue("fixture Data row id must be a positive decimal integer",
                 expectedDataId.matches("[1-9][0-9]{0,18}"));
         assertTrue("fixture display name is missing", !expectedDisplayName.isEmpty());
