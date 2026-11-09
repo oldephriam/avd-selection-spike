@@ -19,8 +19,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-import java.util.Arrays;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -141,33 +139,22 @@ public final class PhonePickerItemClickTest {
         int cursorItemCount = 0;
         int phoneIdMatchCount = 0;
         int displayNameMatchCount = 0;
-        String firstItemType = "none";
-        String firstCursorColumns = "none";
-        StringBuilder itemTypes = new StringBuilder();
+        boolean hasIdColumn = false;
+        boolean hasDisplayNameColumn = false;
         for (int position = 0; position < adapter.getCount(); position++) {
             Object item = adapter.getItem(position);
-            if (position == 0) {
-                firstItemType = item == null ? "null" : item.getClass().getName();
-            }
-            if (position < 6) {
-                if (itemTypes.length() > 0) {
-                    itemTypes.append(',');
-                }
-                itemTypes.append(item == null ? "null" : item.getClass().getSimpleName());
-            }
             if (!(item instanceof Cursor)) {
                 continue;
             }
             Cursor cursor = (Cursor) item;
             cursorItemCount++;
-            if (firstCursorColumns.equals("none")) {
-                firstCursorColumns = Arrays.toString(cursor.getColumnNames());
-            }
             int idColumn = cursor.getColumnIndex("_id");
             int nameColumn = cursor.getColumnIndex("display_name");
             if (nameColumn < 0) {
                 nameColumn = cursor.getColumnIndex("display_name_primary");
             }
+            hasIdColumn |= idColumn >= 0;
+            hasDisplayNameColumn |= nameColumn >= 0;
             if (idColumn < 0 || nameColumn < 0) {
                 continue;
             }
@@ -186,10 +173,10 @@ public final class PhonePickerItemClickTest {
         }
         if (matchCount == 0) {
             return new ClickOutcome(false, false, -1,
-                    "fixture row not loaded: adapter=" + adapter.getClass().getName()
+                    "fixture row not loaded: adapter=" + adapter.getClass().getSimpleName()
                             + "; items=" + adapter.getCount() + "; cursorItems=" + cursorItemCount
-                            + "; firstItem=" + firstItemType + "; firstItemTypes=" + itemTypes
-                            + "; firstCursorColumns=" + firstCursorColumns
+                            + "; hasIdColumn=" + hasIdColumn
+                            + "; hasDisplayNameColumn=" + hasDisplayNameColumn
                             + "; phoneIdMatches=" + phoneIdMatchCount
                             + "; displayNameMatches=" + displayNameMatchCount
                             + "; listChildren=" + list.getChildCount());
