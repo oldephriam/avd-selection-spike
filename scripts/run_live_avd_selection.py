@@ -14,7 +14,6 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from campaign.adb_selection_adapter import AdbSelectionAdapter, RosterBinding
 from campaign.device_observer import DeviceObserver
-from campaign.recipient_probe import ProbeStatus, RecipientSelectionProbe, RecipientTarget
 from campaign.roster import normalize_us_number
 
 SERIAL = "emulator-5554"
@@ -253,6 +252,30 @@ def fixture_visible_in_provider(avd: AVD) -> bool:
     return aggregated
 
 
+def fixture_phone_data_id(avd: AVD) -> str:
+    binding = fixture_binding()
+    source = (ROOT / "android/seeder/src/main/java/com/pacer/test/seeder/SeederActivity.java").read_text(encoding="utf-8")
+    phone = re.search(r'FIXTURE_RECIPIENT_KEY[ ]*=[ ]*"([^"]+)"', source)
+    if not phone:
+        raise RuntimeError("synthetic fixture phone value is missing")
+    rows = str(avd.command(
+        "shell", "content", "query",
+        "--uri", "content://com.android.contacts/data/phones",
+    ))
+    matches = []
+    for line in rows.splitlines():
+        if binding.display_name not in line or phone.group(1) not in line:
+            continue
+        if "vnd.android.cursor.item/phone" not in line:
+            continue
+        match = re.search("_id=([0-9]+)", line)
+        if match:
+            matches.append(match.group(1))
+    if len(matches) != 1:
+        raise RuntimeError("fixture phone Data row ID is missing or ambiguous")
+    return matches[0]
+
+
 def wait_for_fixture_provider_visibility(avd: AVD, timeout_seconds: int = 15) -> None:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
@@ -276,8 +299,9 @@ def main() -> int:
 
     probe_apk = ROOT / "android/probe/build/outputs/apk/debug/probe-debug.apk"
     seeder_apk = ROOT / "android/seeder/build/outputs/apk/debug/seeder-debug.apk"
-    if not probe_apk.is_file() or not seeder_apk.is_file():
-        raise RuntimeError("debug APK artifacts are missing")
+    harness_apk = ROOT / "android/pickerharness/build/outputs/apk/debug/pickerharness-debug.apk"
+    if not probe_apk.is_file() or not seeder_apk.is_file() or not harness_apk.is_file():
+        raise RuntimeError("probe, seeder, or picker instrumentation APK artifact is missing")
 
     avd = AVD(adb_path)
     devices = str(run([adb_path, "devices", "-l"])).splitlines()
@@ -293,28 +317,15 @@ def main() -> int:
         avd.tap_label(SEEDER, "Seed synthetic contact")
         avd.wait_for_text("SEEDED: one synthetic contact is ready")
         wait_for_fixture_provider_visibility(avd)
-        print("Provider verified: phone Data row links to a default-aggregated local RawContact and Contacts row.")
+        fixture_data_id = fixture_phone_data_id(avd)
+        print("Provider verified: one joined phone Data row and exact fixture identifier captured.")
         avd.command("uninstall", SEEDER, timeout=60)
         installed = str(avd.command("shell", "pm", "list", "packages", SEEDER)).strip()
         if installed:
             raise RuntimeError("temporary seeder remained installed after fixture setup")
 
         avd.command("install", "-r", str(probe_apk), timeout=120)
-        avd.command("shell", "am", "start", "-W", "-n", f"{PROBE}/.ProbeActivity", timeout=30)
-        avd.tap_label(PROBE, "Choose one contact")
-        deadline = time.monotonic() + 30
-        foreground = ""
-        while time.monotonic() < deadline:
-            try:
-                foreground = avd.foreground()
-            except RuntimeError:
-                foreground = ""
-            if foreground == PICKER:
-                break
-            time.sleep(0.5)
-        if foreground != PICKER:
-            raise RuntimeError("platform picker did not become the foreground package")
-
+        avd.command("install", "-r", str(harness_apk), timeout=120)
         probe_version = module_version("probe")
         probe_cert = cert_digest(apksigner, probe_apk)
         adapter = AdbSelectionAdapter(
@@ -333,32 +344,53 @@ def main() -> int:
             max_polls=4,
             poll_interval_seconds=1,
         )
-        result = RecipientSelectionProbe(observer).select(
-            RecipientTarget(binding.snapshot_id, binding.roster_index, binding.recipient_key)
-        )
-        if result.status is ProbeStatus.NOT_FOUND:
-            frame = adapter.capture(SERIAL)
-            labels = [re.sub(r"\d", "", label)[:80] for label in frame.active_control_labels[:20]]
-            visible_text = [re.sub(r"\d", "", text)[:100] for text in frame.visible_text[:40]]
-            print(
-                f"Picker diagnostic: surfaces={frame.surface_packages!r}, "
-                f"candidateCount={len(frame.candidates)}, controls={labels!r}, "
-                f"visibleText={visible_text!r}, "
-                f"candidateParse={frame.candidate_diagnostics!r}"
-            )
-        if result.status is not ProbeStatus.BOUND or result.evidence is None:
+        harness_output = str(avd.command(
+            "shell", "am", "instrument", "-w",
+            "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",
+            "-e", "fixture_data_id", fixture_data_id,
+            "-e", "fixture_display_name", binding.display_name,
+            "com.pacer.test.pickerharness/.PickerInstrumentationRunner",
+            timeout=120,
+        ))
+        if ("OK (1 test)" not in harness_output or "INSTRUMENTATION_CODE: -1" not in harness_output):
+            raise RuntimeError("in-process picker item-click instrumentation did not pass its bounded test")
+        deadline = time.monotonic() + 30
+        foreground = ""
+        frame = None
+        while time.monotonic() < deadline:
             try:
-                print(f"Post-selection UI diagnostic: {avd.selection_diagnostics()}")
-            except (RuntimeError, ET.ParseError) as diagnostic_error:
-                print(f"Post-selection UI diagnostic unavailable: {type(diagnostic_error).__name__}")
-            raise RuntimeError(f"live selection probe failed closed: {result.status.value}: {result.detail}")
-        print("Live selection probe BOUND; returned probe surface/readback and pinned identities verified.")
-        print(f"Evidence SHA-256: screenshot={result.evidence.screenshot_sha256}, hierarchy={result.evidence.hierarchy_sha256}")
+                foreground = avd.foreground()
+                if foreground == PROBE:
+                    frame = observer.capture()
+                    if any("RESULT_OK: BOUND CANDIDATE" in text for text in frame.visible_text):
+                        break
+            except RuntimeError:
+                frame = None
+            time.sleep(0.5)
+        if foreground != PROBE or frame is None:
+            raise RuntimeError("instrumented picker did not return to the pinned probe surface")
+        if frame.send_surface_present or frame.surface_packages != (PROBE,):
+            raise RuntimeError("unexpected surface appeared after instrumented picker activation")
+        readback = "\n".join(frame.visible_text)
+        expected_fields = (
+            "RESULT_OK: BOUND CANDIDATE",
+            f"contact_row_id={fixture_data_id}",
+            f"display_name={binding.display_name}",
+            f"recipient_key={binding.recipient_key}",
+        )
+        if any(field not in readback for field in expected_fields):
+            raise RuntimeError("RESULT_OK readback did not match the exact seeded fixture identity")
+        print("Hosted-path instrumentation invoked ListView.performItemClick on the exact provider-bound phone row.")
+        print("RESULT_OK readback matched the exact fixture row; picker and probe package pins remained verified.")
+        print(f"Evidence SHA-256: screenshot={frame.screenshot_sha256}, hierarchy={frame.hierarchy_sha256}")
         return 0
     finally:
         remaining = str(avd.command("shell", "pm", "list", "packages", SEEDER)).strip()
         if remaining:
             avd.command("uninstall", SEEDER, timeout=60)
+        harness_installed = str(avd.command("shell", "pm", "list", "packages", "com.pacer.test.pickerharness")).strip()
+        if harness_installed:
+            avd.command("uninstall", "com.pacer.test.pickerharness", timeout=60)
 
 
 if __name__ == "__main__":

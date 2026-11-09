@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Picker item-click test harness" />
+
+    <instrumentation
+        android:name="com.pacer.test.pickerharness.PickerInstrumentationRunner"
+        android:targetPackage="com.android.contacts"
+        android:label="Verified phone picker item-click harness" />
+</manifest>

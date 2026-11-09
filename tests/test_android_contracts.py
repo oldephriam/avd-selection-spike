@@ -42,16 +42,39 @@ class AndroidContractTests(unittest.TestCase):
         self.assertEqual(source.count("Intent.ACTION_PICK"), 1)
         self.assertIn("ContactsContract.CommonDataKinds.Phone.CONTENT_URI", source)
         self.assertIn("onActivityResult", source)
+        self.assertIn("RESULT_OK: BOUND CANDIDATE", source)
         self.assertIn("picker returned RESULT_CANCELED", source)
         self.assertIn("picker returned RESULT_OK without a URI", source)
         self.assertIn("recipient_key=", source)
         self.assertIn("setContentDescription(\"selection_readback\")", source)
+        self.assertIn("pacer_test_launch_picker", source)
+        self.assertIn("getBooleanExtra", source)
         launch_start = source.index("private void launchContactPicker")
         clear_old = source.index("awaiting new picker result", launch_start)
         launch_intent = source.index("startActivityForResult", launch_start)
         self.assertLess(clear_old, launch_intent)
         self.assertNotIn("requestPermissions(", source)
         self.assertNotIn("startActivity(new Intent(Intent.ACTION_SEND", source)
+
+    def test_picker_item_click_harness_targets_pinned_contacts_without_permissions(self) -> None:
+        module = "pickerharness"
+        manifest = self.manifest(module)
+        build = (ROOT / module / "build.gradle.kts").read_text(encoding="utf-8")
+        self.assertIn('applicationId = "com.pacer.test.pickerharness"', build)
+        self.assertEqual(manifest.findall("uses-permission"), [])
+        instrumentation = manifest.find("instrumentation")
+        self.assertIsNotNone(instrumentation)
+        self.assertEqual(attr(instrumentation, "targetPackage"), "com.android.contacts")
+        self.assertEqual(attr(instrumentation, "name"),
+                         "com.pacer.test.pickerharness.PickerInstrumentationRunner")
+        harness = (ROOT / module / "src/main/java/com/pacer/test/pickerharness/"
+                   "PhonePickerItemClickTest.java").read_text(encoding="utf-8")
+        runner = (ROOT / module / "src/main/java/com/pacer/test/pickerharness/"
+                  "PickerInstrumentationRunner.java").read_text(encoding="utf-8")
+        self.assertIn("callActivityOnResume", runner)
+        self.assertIn("performItemClick", harness)
+        self.assertIn("getItemIdAtPosition", harness)
+        self.assertNotIn("input tap", harness)
 
     def test_seeder_has_only_write_contacts_permission_and_is_separate_package(self) -> None:
         manifest = self.manifest("seeder")
@@ -99,13 +122,15 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn("pacer-avd", workflow)
         self.assertIn("ip6tables", workflow)
         self.assertLess(workflow.index("Inspect and pin exact AOSP picker identity"),
-                        workflow.index("Build probe and seeder APKs"))
+                        workflow.index("Build probe, seeder, and picker harness APKs"))
         self.assertIn("PIN_MODE: ${{ github.event.inputs.pin_mode || 'verify' }}", workflow)
         self.assertIn("default: discover", workflow)
         self.assertIn("AOSP_BUILD_FINGERPRINT", (root / "scripts" / "pin_aosp_picker.py").read_text(encoding="utf-8"))
         self.assertIn("PIN_DISCOVERY_REQUIRED", (root / "scripts" / "pin_aosp_picker.py").read_text(encoding="utf-8"))
         self.assertIn("aosp-picker-identity.json", workflow)
         self.assertIn("run_live_avd_selection.py", workflow)
+        self.assertIn(":pickerharness:assembleDebug", workflow)
+        self.assertIn(":pickerharness:assembleDebug", (root / "avd-selection-spike.txt").read_text(encoding="utf-8"))
         self.assertIn("Refresh ADB transport before picker inspection", workflow)
         self.assertIn("adb -s emulator-5554 get-state", workflow)
         self.assertIn("sys.boot_completed", workflow)

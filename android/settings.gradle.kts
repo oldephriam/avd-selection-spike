@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "pacer-selection-spike"
-include(":probe", ":seeder")
+include(":probe", ":seeder", ":pickerharness")

@@ -47,6 +47,9 @@ public final class ProbeActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         setContentView(root);
+        if (getIntent().getBooleanExtra("pacer_test_launch_picker", false)) {
+            pickerButton.performClick();
+        }
     }
 
     private void launchContactPicker() {
@@ -110,7 +113,7 @@ public final class ProbeActivity extends Activity {
                 showReadback("UNVERIFIED: selected row lacks complete identity data");
                 return;
             }
-            showReadback("BOUND CANDIDATE\ncontact_row_id=" + rowId
+            showReadback("RESULT_OK: BOUND CANDIDATE\ncontact_row_id=" + rowId
                     + "\ndisplay_name=" + displayName
                     + "\nrecipient_key=" + key);
         } catch (SecurityException | IllegalArgumentException error) {

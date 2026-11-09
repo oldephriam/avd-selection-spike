@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import sys
 import unittest
 from unittest.mock import patch
@@ -79,6 +80,23 @@ class LiveAvdCommandTests(unittest.TestCase):
             "content://com.android.contacts/raw_contacts",
             "content://com.android.contacts/contacts",
         ])
+
+    def test_fixture_phone_data_id_is_bound_to_unique_phone_provider_row(self) -> None:
+        binding = live.fixture_binding()
+        source = (live.ROOT / "android/seeder/src/main/java/com/pacer/test/seeder/SeederActivity.java").read_text(encoding="utf-8")
+        phone = re.search(
+            r'FIXTURE_RECIPIENT_KEY[ ]*=[ ]*"([^"]+)"', source
+        ).group(1)
+
+        class FakeAvd:
+            def command(self, *args, **kwargs):
+                return (
+                    f"Row: 0 _id=900 raw_contact_id=4 contact_id=7 "
+                    f"mimetype=vnd.android.cursor.item/phone_v2 "
+                    f"display_name={binding.display_name} data1={phone}"
+                )
+
+        self.assertEqual(live.fixture_phone_data_id(FakeAvd()), "900")
 
     def test_phone_row_alone_is_not_enough_without_aggregated_contact(self) -> None:
         class FakeAvd:
