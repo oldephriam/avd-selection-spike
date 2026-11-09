@@ -213,9 +213,7 @@ class AdbSelectionAdapter:
             f"rowBounds={initial.row_bounds}"
         )
         for step in range(21):
-            if not current.list_focused:
-                return SelectionActionResult.REJECTED
-            if current.list_item_selected:
+            if current.list_focused and current.list_item_selected:
                 final_identity = self.inspect_device(APPROVED_SERIAL)
                 if (not self._same_foreground_identity(expected_identity, final_identity)
                         or final_identity.foreground_package != self._picker_package

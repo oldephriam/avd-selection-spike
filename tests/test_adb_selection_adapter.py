@@ -131,7 +131,7 @@ class FakeProcessRunner:
                         "package": PICKER_PACKAGE,
                         "clickable": "false",
                         "enabled": "true",
-                        "focused": "true",
+                        "focused": "true" if self.list_item_focused else "false",
                         "scrollable": "true",
                         "bounds": "[0,80][1080,1000]",
                     })
