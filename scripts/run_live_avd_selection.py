@@ -283,6 +283,18 @@ def fixture_phone_number() -> str:
     return phone.group(1)
 
 
+def readback_status(readback: str) -> str:
+    if "RESULT_OK: BOUND CANDIDATE" in readback:
+        return "result_ok"
+    if "RESULT_CANCELED" in readback:
+        return "result_canceled"
+    if "RESULT_OK" in readback:
+        return "result_ok_unbound"
+    if "UNVERIFIED" in readback:
+        return "unverified"
+    return "status_missing"
+
+
 def missing_readback_fields(
     readback: str,
     expected_fields: tuple[tuple[str, str], ...],
@@ -476,6 +488,7 @@ def main() -> int:
             raise RuntimeError(
                 "RESULT_OK readback did not match the exact seeded fixture identity; "
                 "unmatched_fields=" + ",".join(missing_fields)
+                + "; readback_state=" + readback_status(readback)
             )
         print("Hosted-path instrumentation invoked ListView.performItemClick on the exact provider-bound phone row.")
         print("RESULT_OK readback matched the exact fixture row; picker and probe package pins remained verified.")

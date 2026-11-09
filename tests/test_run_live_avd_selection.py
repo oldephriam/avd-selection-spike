@@ -141,6 +141,11 @@ class LiveAvdCommandTests(unittest.TestCase):
 
         self.assertEqual(live.fixture_phone_data_id(FakeAvd()), "900")
 
+    def test_readback_status_classification_omits_fixture_values(self) -> None:
+        self.assertEqual(live.readback_status("UNVERIFIED: picker returned RESULT_CANCELED"), "result_canceled")
+        self.assertEqual(live.readback_status("RESULT_OK: BOUND CANDIDATE"), "result_ok")
+        self.assertEqual(live.readback_status("no selection data"), "status_missing")
+
     def test_readback_mismatch_reports_only_field_labels(self) -> None:
         expected = (
             ("status", "RESULT_OK: BOUND CANDIDATE"),
