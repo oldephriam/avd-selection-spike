@@ -283,6 +283,13 @@ def fixture_phone_number() -> str:
     return phone.group(1)
 
 
+def missing_readback_fields(
+    readback: str,
+    expected_fields: tuple[tuple[str, str], ...],
+) -> tuple[str, ...]:
+    return tuple(label for label, expected in expected_fields if expected not in readback)
+
+
 def instrumentation_test_passed(output: str) -> bool:
     text = str(output)
     if re.search(r"(?m)^(?:FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED)(?:\s|:|$)", text):
@@ -459,13 +466,17 @@ def main() -> int:
             raise RuntimeError("unexpected surface appeared after instrumented picker activation")
         readback = "\n".join(frame.visible_text)
         expected_fields = (
-            "RESULT_OK: BOUND CANDIDATE",
-            f"contact_row_id={fixture_data_id}",
-            f"display_name={binding.display_name}",
-            f"recipient_key={binding.recipient_key}",
+            ("status", "RESULT_OK: BOUND CANDIDATE"),
+            ("contact_row_id", f"contact_row_id={fixture_data_id}"),
+            ("display_name", f"display_name={binding.display_name}"),
+            ("recipient_key", f"recipient_key={binding.recipient_key}"),
         )
-        if any(field not in readback for field in expected_fields):
-            raise RuntimeError("RESULT_OK readback did not match the exact seeded fixture identity")
+        missing_fields = missing_readback_fields(readback, expected_fields)
+        if missing_fields:
+            raise RuntimeError(
+                "RESULT_OK readback did not match the exact seeded fixture identity; "
+                "unmatched_fields=" + ",".join(missing_fields)
+            )
         print("Hosted-path instrumentation invoked ListView.performItemClick on the exact provider-bound phone row.")
         print("RESULT_OK readback matched the exact fixture row; picker and probe package pins remained verified.")
         print(f"Evidence SHA-256: screenshot={frame.screenshot_sha256}, hierarchy={frame.hierarchy_sha256}")

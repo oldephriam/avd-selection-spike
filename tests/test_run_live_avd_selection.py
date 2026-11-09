@@ -141,6 +141,17 @@ class LiveAvdCommandTests(unittest.TestCase):
 
         self.assertEqual(live.fixture_phone_data_id(FakeAvd()), "900")
 
+    def test_readback_mismatch_reports_only_field_labels(self) -> None:
+        expected = (
+            ("status", "RESULT_OK: BOUND CANDIDATE"),
+            ("contact_row_id", "contact_row_id=42"),
+            ("display_name", "display_name=fixture contact"),
+        )
+        missing = live.missing_readback_fields(
+            "RESULT_OK: BOUND CANDIDATE\ncontact_row_id=99\ndisplay_name=fixture contact", expected,
+        )
+        self.assertEqual(missing, ("contact_row_id",))
+
     def test_instrumentation_pass_accepts_junit_success_without_optional_am_result_marker(self) -> None:
         output = "com.pacer.test.pickerharness.PhonePickerItemClickTest:.\nTime: 0.02\n\nOK (1 test)\n"
         self.assertTrue(live.instrumentation_test_passed(output))
