@@ -283,6 +283,16 @@ def fixture_phone_number() -> str:
     return phone.group(1)
 
 
+def instrumentation_test_passed(output: str) -> bool:
+    text = str(output)
+    if re.search(r"(?m)^(?:FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED)(?:\s|:|$)", text):
+        return False
+    instrumentation_code = re.search(r"(?m)^INSTRUMENTATION_CODE:\s*(-?\d+)\s*$", text)
+    if instrumentation_code and instrumentation_code.group(1) != "-1":
+        return False
+    return re.search(r"(?m)^OK \(1 test\)\s*$", text) is not None
+
+
 def sanitized_instrumentation_output(output: str, binding: RosterBinding, fixture_data_id: str) -> str:
     text = str(output)
     fixture_phone = fixture_phone_number()
@@ -409,7 +419,7 @@ def main() -> int:
             timeout=120,
             check=False,
         ))
-        if ("OK (1 test)" not in harness_output or "INSTRUMENTATION_CODE: -1" not in harness_output):
+        if not instrumentation_test_passed(harness_output):
             print("Instrumentation result (sanitized):")
             print(sanitized_instrumentation_output(harness_output, binding, fixture_data_id))
             for label, command in (

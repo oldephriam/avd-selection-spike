@@ -141,6 +141,15 @@ class LiveAvdCommandTests(unittest.TestCase):
 
         self.assertEqual(live.fixture_phone_data_id(FakeAvd()), "900")
 
+    def test_instrumentation_pass_accepts_junit_success_without_optional_am_result_marker(self) -> None:
+        output = "com.pacer.test.pickerharness.PhonePickerItemClickTest:.\nTime: 0.02\n\nOK (1 test)\n"
+        self.assertTrue(live.instrumentation_test_passed(output))
+
+    def test_instrumentation_pass_rejects_failures_and_unexpected_am_result_codes(self) -> None:
+        self.assertFalse(live.instrumentation_test_passed("OK (1 test)\nFAILURES!!!\n"))
+        self.assertFalse(live.instrumentation_test_passed("OK (0 tests)\n"))
+        self.assertFalse(live.instrumentation_test_passed("OK (1 test)\nINSTRUMENTATION_CODE: 0\n"))
+
     def test_instrumentation_failure_output_is_sanitized_and_bounded(self) -> None:
         binding = live.fixture_binding()
         phone = live.fixture_phone_number()
