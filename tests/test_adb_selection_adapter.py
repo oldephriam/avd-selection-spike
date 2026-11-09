@@ -4,6 +4,8 @@ import sys
 import subprocess
 import struct
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -237,9 +239,18 @@ class AdbSelectionAdapterTests(unittest.TestCase):
         runner = FakeProcessRunner()
         runner.list_view_semantics = True
         adapter = self.make_adapter(runner)
-        result = self.make_probe(adapter).select(RecipientTarget(SNAPSHOT, 0, KEY))
+        output = StringIO()
+        with redirect_stdout(output):
+            result = self.make_probe(adapter).select(RecipientTarget(SNAPSHOT, 0, KEY))
         self.assertEqual(result.status, ProbeStatus.BOUND)
         self.assertEqual(sum("input tap" in " ".join(c[0]) for c in runner.calls), 1)
+        diagnostic = output.getvalue()
+        self.assertIn("Pre-tap UI hierarchy", diagnostic)
+        self.assertIn("target=android.widget.LinearLayout:clickable=false", diagnostic)
+        self.assertIn("bounds=(0, 100, 1080, 260)", diagnostic)
+        self.assertIn("tapNode=android.widget.TextView", diagnostic)
+        self.assertIn("tapBounds=(20, 180, 700, 230)", diagnostic)
+        self.assertIn("tap=(360, 205)", diagnostic)
 
     def test_capture_exposes_non_control_picker_text_for_diagnostics(self):
         runner = FakeProcessRunner()

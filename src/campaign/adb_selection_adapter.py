@@ -183,6 +183,11 @@ class AdbSelectionAdapter:
             y = top + (bottom - top) // 2
             if x < 0 or y < 0 or right <= left or bottom <= top:
                 return SelectionActionResult.REJECTED
+            target_diagnostics = "; ".join(fresh_frame.candidate_diagnostics[:8])
+            print(
+                f"Pre-tap UI hierarchy: {target_diagnostics}; "
+                f"target={fresh.candidate.candidate_id[:8]} bounds={fresh.bounds} tap=({x}, {y})"
+            )
             self._adb_text("shell", "input", "tap", str(x), str(y))
             self._pending_selection = fresh
             return SelectionActionResult.SELECTED
@@ -229,12 +234,15 @@ class AdbSelectionAdapter:
             click_node = node
             while click_node is not None and click_node.attrib.get("clickable") != "true":
                 click_node = parents.get(click_node)
-            bounds = self._parse_bounds(click_node.attrib.get("bounds", "")) if click_node is not None else None
+            target_node = click_node
+            if target_node is None:
+                target_node = self._list_view_item_target(node, parents, screen_size)
+            bounds = self._parse_bounds(target_node.attrib.get("bounds", "")) if target_node is not None else None
             valid_bounds = bool(bounds and bounds[2] <= screen_size[0] and bounds[3] <= screen_size[1])
-            visible = node.attrib.get("visible-to-user") != "false" and click_node is not None
-            if visible and click_node is not None:
+            visible = node.attrib.get("visible-to-user") != "false" and target_node is not None
+            if visible and target_node is not None:
                 visible = all(ancestor.attrib.get("visible-to-user") != "false"
-                              for ancestor in self._ancestors(click_node, parents))
+                              for ancestor in self._ancestors(target_node, parents))
             chain = []
             ancestor = node
             while ancestor is not None and len(chain) < 6:
@@ -245,13 +253,25 @@ class AdbSelectionAdapter:
                 ancestor = parents.get(ancestor)
             candidate_diagnostics.append(
                 "key-match:clickable={}:enabled={}:bounds={}:visible={}:hierarchy={}".format(
-                    str(click_node is not None).lower(),
-                    str(click_node is not None and click_node.attrib.get("enabled") == "true").lower(),
+                    str(target_node is not None).lower(),
+                    str(target_node is not None and target_node.attrib.get("enabled") == "true").lower(),
                     str(valid_bounds).lower(),
                     str(visible).lower(),
                     chain,
                 )
             )
+            if target_node is not None:
+                diagnostic_bounds = self._parse_bounds(target_node.attrib.get("bounds", ""))
+                candidate_diagnostics[-1] += (
+                    f":target={target_node.attrib.get('class', '')}"
+                    f":clickable={str(target_node.attrib.get('clickable') == 'true').lower()}"
+                    f":bounds={diagnostic_bounds}"
+                )
+                if target_node is not click_node:
+                    candidate_diagnostics[-1] += (
+                        f":tapNode={node.attrib.get('class', '')}"
+                        f":tapBounds={self._parse_bounds(node.attrib.get('bounds', ''))}"
+                    )
         all_text = " ".join(" ".join((node.attrib.get("text", ""),
                                       node.attrib.get("content-desc", ""))) for node in root.iter())
         labels = tuple(text for node in root.iter() if node.attrib.get("clickable") == "true"
@@ -332,11 +352,22 @@ class AdbSelectionAdapter:
             click_node = node
             while click_node is not None and click_node.attrib.get("clickable") != "true":
                 click_node = parents.get(click_node)
+            list_item_fallback = click_node is None
             if click_node is None:
                 click_node = self._list_view_item_target(node, parents, screen_size)
             if click_node is None or click_node.attrib.get("enabled") != "true":
                 continue
             bounds = self._parse_bounds(click_node.attrib.get("bounds", ""))
+            if list_item_fallback:
+                touch_bounds = self._parse_bounds(node.attrib.get("bounds", ""))
+                if (node.attrib.get("class") != "android.widget.TextView"
+                        or node.attrib.get("enabled") != "true"
+                        or node.attrib.get("visible-to-user") == "false"
+                        or bounds is None or touch_bounds is None
+                        or touch_bounds[0] < bounds[0] or touch_bounds[1] < bounds[1]
+                        or touch_bounds[2] > bounds[2] or touch_bounds[3] > bounds[3]):
+                    continue
+                bounds = touch_bounds
             if (bounds is None or bounds[2] > screen_size[0] or bounds[3] > screen_size[1]
                     or node.attrib.get("visible-to-user") == "false"
                     or click_node.attrib.get("visible-to-user") == "false"
