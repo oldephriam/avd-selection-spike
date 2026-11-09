@@ -4,5 +4,5 @@
         android:name="androidx.test.runner.AndroidJUnitRunner"
         android:targetPackage="com.android.contacts"
         android:label="Verified phone picker item-click harness"
-        tools:replace="android:targetPackage" />
+        tools:node="replace" />
 </manifest>

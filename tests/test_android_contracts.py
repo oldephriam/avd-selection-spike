@@ -76,6 +76,7 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIsNotNone(instrumentation)
         self.assertEqual(attr(instrumentation, "targetPackage"), "com.android.contacts")
         self.assertEqual(attr(instrumentation, "name"), "androidx.test.runner.AndroidJUnitRunner")
+        self.assertEqual(instrumentation.get("{http://schemas.android.com/tools}node"), "replace")
         harness = (ROOT / module / "src/androidTest/java/com/pacer/test/pickerharness/"
                    "PhonePickerItemClickTest.java").read_text(encoding="utf-8")
         self.assertIn("@RunWith(AndroidJUnit4.class)", harness)
