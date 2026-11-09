@@ -18,14 +18,14 @@ public final class PhonePickerItemClickTest extends InstrumentationTestCase {
     private static final long LOAD_TIMEOUT_MILLIS = 30000;
 
     public void testExactPhoneDataRowUsesListViewPerformItemClick() throws Exception {
-        Bundle arguments = getInstrumentation().getArguments();
+        PickerInstrumentationRunner runner = (PickerInstrumentationRunner) getInstrumentation();
+        Bundle arguments = runner.getRunnerArguments();
         String expectedDataId = arguments.getString(PHONE_DATA_ID_ARGUMENT, "");
         String expectedDisplayName = arguments.getString(DISPLAY_NAME_ARGUMENT, "");
         assertTrue("fixture Data row id must be a positive decimal integer",
                 expectedDataId.matches("[1-9][0-9]{0,18}"));
         assertTrue("fixture display name is missing", !expectedDisplayName.isEmpty());
 
-        PickerInstrumentationRunner runner = (PickerInstrumentationRunner) getInstrumentation();
         Activity stale = runner.awaitPickerActivity(1);
         assertNull("unexpected picker activity already observed before this run", stale);
 

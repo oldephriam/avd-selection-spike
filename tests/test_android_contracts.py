@@ -73,6 +73,7 @@ class AndroidContractTests(unittest.TestCase):
         runner = (ROOT / module / "src/main/java/com/pacer/test/pickerharness/"
                   "PickerInstrumentationRunner.java").read_text(encoding="utf-8")
         self.assertIn("callActivityOnResume", runner)
+        self.assertIn("getRunnerArguments", runner)
         self.assertIn("performItemClick", harness)
         self.assertIn("getItemIdAtPosition", harness)
         self.assertNotIn("input tap", harness)
