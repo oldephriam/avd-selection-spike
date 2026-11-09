@@ -32,6 +32,15 @@ IDENTITY = {
 
 
 class PinAospPickerTests(unittest.TestCase):
+    def test_adb_command_failure_reports_sanitized_stderr(self) -> None:
+        from types import SimpleNamespace
+        from scripts.pin_aosp_picker import run
+
+        result = SimpleNamespace(returncode=1, stdout="", stderr="error: device offline")
+        with patch("scripts.pin_aosp_picker.subprocess.run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "device offline"):
+                run(["adb", "-s", "emulator-5554", "shell", "getprop"])
+
     def test_missing_repository_pins_trigger_discovery(self) -> None:
         values = {
             "AOSP_35_BUILD_FINGERPRINT": "",

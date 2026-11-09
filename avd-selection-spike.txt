@@ -197,6 +197,28 @@ jobs:
           PY
           adb -s emulator-5554 shell input keyevent 82
 
+      - name: Refresh ADB transport before picker inspection
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          state=unknown
+          booted=unknown
+          for attempt in $(seq 1 10); do
+            state="$(adb -s emulator-5554 get-state 2>&1 || true)"
+            if [[ "$state" == device ]]; then
+              booted="$(adb -s emulator-5554 shell getprop sys.boot_completed 2>&1 || true)"
+              if [[ "$booted" == "1" ]]; then ready=1; break; fi
+            fi
+            sleep 2
+          done
+          if [[ "$ready" != 1 ]]; then
+            echo "ADB transport did not remain ready for picker inspection; state=$state boot=$booted" >&2
+            adb devices -l >&2 || true
+            exit 1
+          fi
+          echo "ADB transport stable: emulator-5554 is online and boot_completed=1."
+
       - name: Inspect and pin exact AOSP picker identity before build
         id: picker
         shell: bash

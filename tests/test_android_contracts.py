@@ -101,6 +101,10 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn("PIN_DISCOVERY_REQUIRED", (root / "scripts" / "pin_aosp_picker.py").read_text(encoding="utf-8"))
         self.assertIn("aosp-picker-identity.json", workflow)
         self.assertIn("run_live_avd_selection.py", workflow)
+        self.assertIn("Refresh ADB transport before picker inspection", workflow)
+        self.assertIn("adb -s emulator-5554 get-state", workflow)
+        self.assertIn("sys.boot_completed", workflow)
+        self.assertEqual(workflow, (root / "avd-selection-spike.txt").read_text(encoding="utf-8"))
         self.assertTrue((root / "scripts" / "pin_aosp_picker.py").is_file())
         self.assertTrue((root / "scripts" / "run_live_avd_selection.py").is_file())
 

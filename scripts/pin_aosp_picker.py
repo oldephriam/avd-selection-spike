@@ -39,7 +39,15 @@ def picker_intent_matches(resolver_output: str, package: str = PACKAGE) -> bool:
 def run(args: list[str], *, text: bool = True, timeout: int = 30) -> str | bytes:
     result = subprocess.run(args, capture_output=True, text=text, timeout=timeout, check=False, shell=False)
     if result.returncode:
-        raise RuntimeError(f"command failed ({Path(args[0]).name}, status {result.returncode})")
+        stderr = result.stderr or ""
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        stderr = re.sub(r"\s+", " ", stderr).strip()
+        stderr = re.sub(r"(?i)\b(token|password|secret)=\S+", r"\1=[redacted]", stderr)
+        raise RuntimeError(
+            f"command failed ({Path(args[0]).name}, status {result.returncode}): "
+            f"{stderr[:300] or 'no stderr'}"
+        )
     return result.stdout
 
 
