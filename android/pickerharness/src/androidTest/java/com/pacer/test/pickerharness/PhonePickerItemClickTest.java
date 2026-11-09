@@ -137,8 +137,8 @@ public final class PhonePickerItemClickTest {
         int matchPosition = -1;
         int matchCount = 0;
         int cursorItemCount = 0;
-        int phoneIdMatchCount = 0;
-        int displayNameMatchCount = 0;
+        boolean phoneIdMatches = false;
+        boolean displayNameMatches = false;
         boolean hasIdColumn = false;
         boolean hasDisplayNameColumn = false;
         for (int position = 0; position < adapter.getCount(); position++) {
@@ -160,12 +160,8 @@ public final class PhonePickerItemClickTest {
             }
             boolean phoneIdMatched = expectedDataId.equals(cursor.getString(idColumn));
             boolean displayNameMatched = expectedDisplayName.equals(cursor.getString(nameColumn));
-            if (phoneIdMatched) {
-                phoneIdMatchCount++;
-            }
-            if (displayNameMatched) {
-                displayNameMatchCount++;
-            }
+            phoneIdMatches |= phoneIdMatched;
+            displayNameMatches |= displayNameMatched;
             if (phoneIdMatched && displayNameMatched) {
                 matchPosition = position;
                 matchCount++;
@@ -173,13 +169,12 @@ public final class PhonePickerItemClickTest {
         }
         if (matchCount == 0) {
             return new ClickOutcome(false, false, -1,
-                    "fixture row not loaded: adapter=" + adapter.getClass().getSimpleName()
-                            + "; items=" + adapter.getCount() + "; cursorItems=" + cursorItemCount
-                            + "; hasIdColumn=" + hasIdColumn
-                            + "; hasDisplayNameColumn=" + hasDisplayNameColumn
-                            + "; phoneIdMatches=" + phoneIdMatchCount
-                            + "; displayNameMatches=" + displayNameMatchCount
-                            + "; listChildren=" + list.getChildCount());
+                    "no-match: adapter=" + adapter.getClass().getSimpleName()
+                            + "; items=" + adapter.getCount() + "; cursors=" + cursorItemCount
+                            + "; idCol=" + hasIdColumn + "; nameCol=" + hasDisplayNameColumn
+                            + "; phoneIdMatches=" + phoneIdMatches
+                            + "; displayNameMatches=" + displayNameMatches
+                            + "; children=" + list.getChildCount());
         }
         if (matchCount != 1) {
             return new ClickOutcome(false, false, -1, "fixture data row was not unique");
