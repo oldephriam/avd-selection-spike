@@ -391,6 +391,13 @@ def main() -> int:
         if ("OK (1 test)" not in harness_output or "INSTRUMENTATION_CODE: -1" not in harness_output):
             print("Instrumentation result (sanitized):")
             print(sanitized_instrumentation_output(harness_output, binding, fixture_data_id))
+            crash_log = str(avd.command(
+                "shell", "logcat", "-d", "-t", "200", "-s",
+                "AndroidRuntime:E", "ActivityManager:E", check=False,
+            ))
+            if crash_log.strip():
+                print("Instrumentation crash log (sanitized):")
+                print(sanitized_instrumentation_output(crash_log, binding, fixture_data_id))
             raise RuntimeError("in-process picker item-click instrumentation did not pass its bounded test")
         deadline = time.monotonic() + 30
         foreground = ""
