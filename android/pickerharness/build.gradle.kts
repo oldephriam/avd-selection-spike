@@ -5,6 +5,7 @@ plugins {
 android {
     namespace = "com.pacer.test.pickerharness"
     compileSdk = 35
+    useLibrary("android.test.base")
     useLibrary("android.test.runner")
 
     defaultConfig {

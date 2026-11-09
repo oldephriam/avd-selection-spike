@@ -61,6 +61,7 @@ class AndroidContractTests(unittest.TestCase):
         manifest = self.manifest(module)
         build = (ROOT / module / "build.gradle.kts").read_text(encoding="utf-8")
         self.assertIn('applicationId = "com.pacer.test.pickerharness"', build)
+        self.assertIn('useLibrary("android.test.base")', build)
         self.assertEqual(manifest.findall("uses-permission"), [])
         instrumentation = manifest.find("instrumentation")
         self.assertIsNotNone(instrumentation)
