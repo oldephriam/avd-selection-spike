@@ -70,8 +70,16 @@ public final class ProbeActivity extends Activity {
             return;
         }
         pickerButton.setEnabled(true);
-        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
-            showReadback("UNVERIFIED: picker returned no selected contact");
+        if (resultCode == RESULT_CANCELED) {
+            showReadback("UNVERIFIED: picker returned RESULT_CANCELED");
+            return;
+        }
+        if (resultCode != RESULT_OK) {
+            showReadback("UNVERIFIED: picker returned non-OK resultCode=" + resultCode);
+            return;
+        }
+        if (data == null || data.getData() == null) {
+            showReadback("UNVERIFIED: picker returned RESULT_OK without a URI");
             return;
         }
         readSelectedPhoneRow(data.getData());

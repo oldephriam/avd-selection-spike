@@ -42,6 +42,8 @@ class AndroidContractTests(unittest.TestCase):
         self.assertEqual(source.count("Intent.ACTION_PICK"), 1)
         self.assertIn("ContactsContract.CommonDataKinds.Phone.CONTENT_URI", source)
         self.assertIn("onActivityResult", source)
+        self.assertIn("picker returned RESULT_CANCELED", source)
+        self.assertIn("picker returned RESULT_OK without a URI", source)
         self.assertIn("recipient_key=", source)
         self.assertIn("setContentDescription(\"selection_readback\")", source)
         launch_start = source.index("private void launchContactPicker")
