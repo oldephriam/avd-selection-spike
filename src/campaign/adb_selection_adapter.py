@@ -218,6 +218,31 @@ class AdbSelectionAdapter:
                              if node.attrib.get("package")), "")
         handles = self._parse_candidates(root, layout_signature, session_id, screen_size)
         candidates = tuple(handle.candidate for handle in handles.values())
+        parents = {child: parent for parent in root.iter() for child in parent}
+        candidate_diagnostics = []
+        for node in root.iter():
+            matching_key = next((parsed for value in
+                                 (node.attrib.get("text", ""), node.attrib.get("content-desc", ""))
+                                 if (parsed := self._normalizable_key(value)) in self._bindings), None)
+            if matching_key is None:
+                continue
+            click_node = node
+            while click_node is not None and click_node.attrib.get("clickable") != "true":
+                click_node = parents.get(click_node)
+            bounds = self._parse_bounds(click_node.attrib.get("bounds", "")) if click_node is not None else None
+            valid_bounds = bool(bounds and bounds[2] <= screen_size[0] and bounds[3] <= screen_size[1])
+            visible = node.attrib.get("visible-to-user") != "false" and click_node is not None
+            if visible and click_node is not None:
+                visible = all(ancestor.attrib.get("visible-to-user") != "false"
+                              for ancestor in self._ancestors(click_node, parents))
+            candidate_diagnostics.append(
+                "key-match:clickable={}:enabled={}:bounds={}:visible={}".format(
+                    str(click_node is not None).lower(),
+                    str(click_node is not None and click_node.attrib.get("enabled") == "true").lower(),
+                    str(valid_bounds).lower(),
+                    str(visible).lower(),
+                )
+            )
         all_text = " ".join(" ".join((node.attrib.get("text", ""),
                                       node.attrib.get("content-desc", ""))) for node in root.iter())
         labels = tuple(text for node in root.iter() if node.attrib.get("clickable") == "true"
@@ -248,6 +273,7 @@ class AdbSelectionAdapter:
             send_surface_present=send_surface,
             active_control_labels=labels,
             visible_text=visible_text,
+            candidate_diagnostics=tuple(candidate_diagnostics[:40]),
             surface_packages=packages,
             external_intent_leak=external_intent_leak,
             readback_visible=readback_visible and selected is not None,

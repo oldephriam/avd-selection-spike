@@ -77,6 +77,7 @@ class DeviceFrame:
     send_surface_present: bool = False
     active_control_labels: tuple[str, ...] = ()
     visible_text: tuple[str, ...] = ()
+    candidate_diagnostics: tuple[str, ...] = ()
     surface_packages: tuple[str, ...] = ()
     external_intent_leak: bool = False
     readback_visible: bool = False

@@ -298,7 +298,8 @@ def main() -> int:
             print(
                 f"Picker diagnostic: surfaces={frame.surface_packages!r}, "
                 f"candidateCount={len(frame.candidates)}, controls={labels!r}, "
-                f"visibleText={visible_text!r}"
+                f"visibleText={visible_text!r}, "
+                f"candidateParse={frame.candidate_diagnostics!r}"
             )
         if result.status is not ProbeStatus.BOUND or result.evidence is None:
             raise RuntimeError(f"live selection probe failed closed: {result.status.value}: {result.detail}")

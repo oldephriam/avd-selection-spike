@@ -220,6 +220,15 @@ class AdbSelectionAdapterTests(unittest.TestCase):
         frame = adapter.capture(SERIAL)
         self.assertIn("Synthetic Contact 001", frame.visible_text)
 
+    def test_capture_reports_candidate_parse_gate_details(self):
+        runner = FakeProcessRunner()
+        adapter = self.make_adapter(runner)
+        frame = adapter.capture(SERIAL)
+        self.assertIn(
+            "key-match:clickable=true:enabled=true:bounds=true:visible=true",
+            frame.candidate_diagnostics,
+        )
+
     def test_source_capture_binding_rejects_stale_candidate_without_tap(self):
         runner = FakeProcessRunner()
         adapter = self.make_adapter(runner)
