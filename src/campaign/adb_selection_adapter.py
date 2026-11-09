@@ -222,6 +222,12 @@ class AdbSelectionAdapter:
                                       node.attrib.get("content-desc", ""))) for node in root.iter())
         labels = tuple(text for node in root.iter() if node.attrib.get("clickable") == "true"
                        for text in (node.attrib.get("text", ""), node.attrib.get("content-desc", "")) if text)
+        visible_text = tuple(
+            value.strip()[:120]
+            for node in root.iter()
+            for value in (node.attrib.get("text", ""), node.attrib.get("content-desc", ""))
+            if value.strip()
+        )[:80]
         send_surface = any(re.search(r"\b(send|compose|message body|sms|rcs)\b", text, re.I)
                            for text in (*labels, all_text))
         readback_visible = root_package == PROBE_PACKAGE and "selection_readback" in all_text and "BOUND CANDIDATE" in all_text
@@ -241,6 +247,7 @@ class AdbSelectionAdapter:
             hierarchy_sha256=hashlib.sha256(hierarchy).hexdigest(),
             send_surface_present=send_surface,
             active_control_labels=labels,
+            visible_text=visible_text,
             surface_packages=packages,
             external_intent_leak=external_intent_leak,
             readback_visible=readback_visible and selected is not None,

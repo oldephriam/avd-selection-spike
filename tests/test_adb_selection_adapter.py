@@ -214,6 +214,12 @@ class AdbSelectionAdapterTests(unittest.TestCase):
         self.assertEqual(result.status, ProbeStatus.UNSAFE_DEVICE)
         self.assertFalse(any("uiautomator dump" in " ".join(c[0]) for c in runner.calls))
 
+    def test_capture_exposes_non_control_picker_text_for_diagnostics(self):
+        runner = FakeProcessRunner()
+        adapter = self.make_adapter(runner)
+        frame = adapter.capture(SERIAL)
+        self.assertIn("Synthetic Contact 001", frame.visible_text)
+
     def test_source_capture_binding_rejects_stale_candidate_without_tap(self):
         runner = FakeProcessRunner()
         adapter = self.make_adapter(runner)

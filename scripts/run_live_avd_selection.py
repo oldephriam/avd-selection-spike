@@ -294,9 +294,11 @@ def main() -> int:
         if result.status is ProbeStatus.NOT_FOUND:
             frame = adapter.capture(SERIAL)
             labels = [re.sub(r"\d", "", label)[:80] for label in frame.active_control_labels[:20]]
+            visible_text = [re.sub(r"\d", "", text)[:100] for text in frame.visible_text[:40]]
             print(
                 f"Picker diagnostic: surfaces={frame.surface_packages!r}, "
-                f"candidateCount={len(frame.candidates)}, controls={labels!r}"
+                f"candidateCount={len(frame.candidates)}, controls={labels!r}, "
+                f"visibleText={visible_text!r}"
             )
         if result.status is not ProbeStatus.BOUND or result.evidence is None:
             raise RuntimeError(f"live selection probe failed closed: {result.status.value}: {result.detail}")
