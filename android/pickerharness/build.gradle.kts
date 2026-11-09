@@ -16,3 +16,10 @@ android {
         versionName = "1.0.0"
     }
 }
+
+dependencies {
+    compileOnly(files(
+        "${android.sdkDirectory}/platforms/android-35/optional/android.test.base.jar",
+        "${android.sdkDirectory}/platforms/android-35/optional/android.test.runner.jar",
+    ))
+}
