@@ -289,6 +289,36 @@ class AdbSelectionAdapter:
         )
         return frame, handles, foreground
 
+    @classmethod
+    def _list_view_item_target(
+        cls,
+        node: ET.Element,
+        parents: Mapping[ET.Element, ET.Element],
+        screen_size: tuple[int, int],
+    ) -> ET.Element | None:
+        current = node
+        while current in parents:
+            parent = parents[current]
+            if parent.attrib.get("class") == "android.widget.ListView":
+                row = current
+                row_class = row.attrib.get("class", "")
+                row_bounds = cls._parse_bounds(row.attrib.get("bounds", ""))
+                list_bounds = cls._parse_bounds(parent.attrib.get("bounds", ""))
+                if (row_class not in {"android.view.ViewGroup", "android.widget.LinearLayout"}
+                        or row.attrib.get("enabled") != "true"
+                        or parent.attrib.get("enabled") != "true"
+                        or row.attrib.get("visible-to-user") == "false"
+                        or parent.attrib.get("visible-to-user") == "false"
+                        or row_bounds is None or list_bounds is None
+                        or row_bounds[0] < list_bounds[0] or row_bounds[1] < list_bounds[1]
+                        or row_bounds[2] > list_bounds[2] or row_bounds[3] > list_bounds[3]
+                        or row_bounds[2] > screen_size[0] or row_bounds[3] > screen_size[1]
+                        or list_bounds[2] > screen_size[0] or list_bounds[3] > screen_size[1]):
+                    return None
+                return row
+            current = parent
+        return None
+
     def _parse_candidates(self, root: ET.Element, layout_signature: str,
                           session_id: str, screen_size: tuple[int, int]) -> dict[str, _CandidateHandle]:
         parents = {child: parent for parent in root.iter() for child in parent}
@@ -302,6 +332,8 @@ class AdbSelectionAdapter:
             click_node = node
             while click_node is not None and click_node.attrib.get("clickable") != "true":
                 click_node = parents.get(click_node)
+            if click_node is None:
+                click_node = self._list_view_item_target(node, parents, screen_size)
             if click_node is None or click_node.attrib.get("enabled") != "true":
                 continue
             bounds = self._parse_bounds(click_node.attrib.get("bounds", ""))

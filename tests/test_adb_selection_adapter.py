@@ -64,6 +64,7 @@ class FakeProcessRunner:
         self.returned_extra_surface = returned_extra_surface
         self.omit_empty_requested_permissions = omit_empty_requested_permissions
         self.layout_changes_before_tap = False
+        self.list_view_semantics = False
         self.picker_hierarchy_reads = 0
         self.selected_name = "Synthetic Contact 001"
         self.screenshot_bytes = PNG_1080_1920
@@ -115,6 +116,24 @@ class FakeProcessRunner:
                     stdout = PICKER_XML.decode().replace("[0,100][1080,260]", "[0,120][1080,300]")
                 else:
                     stdout = PICKER_XML.decode()
+                if self.list_view_semantics:
+                    import xml.etree.ElementTree as ET
+                    root = ET.fromstring(stdout)
+                    row = root.find(".//node[@resource-id='com.android.contacts:id/contact_row']")
+                    parent = next(parent for parent in root.iter() if row in list(parent))
+                    parent.remove(row)
+                    list_node = ET.Element("node", {
+                        "class": "android.widget.ListView",
+                        "package": PICKER_PACKAGE,
+                        "clickable": "false",
+                        "enabled": "true",
+                        "scrollable": "true",
+                        "bounds": "[0,80][1080,1000]",
+                    })
+                    list_node.append(row)
+                    parent.append(list_node)
+                    row.attrib["clickable"] = "false"
+                    stdout = ET.tostring(root, encoding="unicode")
             else:
                 stdout = PROBE_XML.decode().replace("Synthetic Contact 001", self.selected_name)
                 if self.returned_extra_surface:
@@ -213,6 +232,14 @@ class AdbSelectionAdapterTests(unittest.TestCase):
         result = self.make_probe(adapter).select(RecipientTarget(SNAPSHOT, 0, KEY))
         self.assertEqual(result.status, ProbeStatus.UNSAFE_DEVICE)
         self.assertFalse(any("uiautomator dump" in " ".join(c[0]) for c in runner.calls))
+
+    def test_contact_in_nonclickable_listview_row_can_be_selected_and_read_back(self):
+        runner = FakeProcessRunner()
+        runner.list_view_semantics = True
+        adapter = self.make_adapter(runner)
+        result = self.make_probe(adapter).select(RecipientTarget(SNAPSHOT, 0, KEY))
+        self.assertEqual(result.status, ProbeStatus.BOUND)
+        self.assertEqual(sum("input tap" in " ".join(c[0]) for c in runner.calls), 1)
 
     def test_capture_exposes_non_control_picker_text_for_diagnostics(self):
         runner = FakeProcessRunner()
