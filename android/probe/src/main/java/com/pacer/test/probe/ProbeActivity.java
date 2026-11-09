@@ -17,6 +17,8 @@ public final class ProbeActivity extends Activity {
 
     private TextView readback;
     private Button pickerButton;
+    private boolean launchPickerOnResume;
+    private boolean autoPickerLaunched;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,7 +49,15 @@ public final class ProbeActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         setContentView(root);
-        if (getIntent().getBooleanExtra("pacer_test_launch_picker", false)) {
+        launchPickerOnResume = getIntent().getBooleanExtra("pacer_test_launch_picker", false);
+    }
+
+    @Override
+    protected void onPostResume() {
+        super.onPostResume();
+        if (launchPickerOnResume && !autoPickerLaunched) {
+            autoPickerLaunched = true;
+            launchPickerOnResume = false;
             pickerButton.performClick();
         }
     }
