@@ -391,6 +391,16 @@ def main() -> int:
         if ("OK (1 test)" not in harness_output or "INSTRUMENTATION_CODE: -1" not in harness_output):
             print("Instrumentation result (sanitized):")
             print(sanitized_instrumentation_output(harness_output, binding, fixture_data_id))
+            for label, command in (
+                ("Registered instrumentation (sanitized):", ("shell", "pm", "list", "instrumentation")),
+                ("Instrumentation package path (sanitized):", (
+                    "shell", "pm", "path", "com.pacer.test.pickerharness.test")),
+                ("Installed instrumentation package (sanitized):", (
+                    "shell", "pm", "list", "packages", "com.pacer.test.pickerharness.test")),
+            ):
+                diagnostic = str(avd.command(*command, check=False))
+                print(label)
+                print(sanitized_instrumentation_output(diagnostic, binding, fixture_data_id))
             crash_log = str(avd.command(
                 "shell", "logcat", "-d", "-t", "200", "-s",
                 "AndroidRuntime:E", "ActivityManager:E", check=False,

@@ -88,6 +88,8 @@ class AndroidContractTests(unittest.TestCase):
         runner_script = (ROOT.parent / "scripts/run_live_avd_selection.py").read_text(encoding="utf-8")
         self.assertIn("pickerharness-debug-androidTest.apk", runner_script)
         self.assertIn("com.pacer.test.pickerharness.test/androidx.test.runner.AndroidJUnitRunner", runner_script)
+        self.assertIn('"shell", "pm", "list", "instrumentation"', runner_script)
+        self.assertIn("Registered instrumentation (sanitized):", runner_script)
         workflow = (ROOT.parent / ".github/workflows/avd-selection-spike.yml").read_text(encoding="utf-8")
         self.assertIn(":pickerharness:assembleDebugAndroidTest", workflow)
 
