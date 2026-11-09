@@ -60,7 +60,7 @@ class AndroidContractTests(unittest.TestCase):
         module = "pickerharness"
         manifest = self.manifest(module)
         build = (ROOT / module / "build.gradle.kts").read_text(encoding="utf-8")
-        self.assertIn('applicationId = "com.pacer.test.pickerharness"', build)
+        self.assertIn('applicationId = "com.android.contacts"', build)
         self.assertIn('testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"', build)
         self.assertIn('androidTestImplementation("androidx.test:runner:', build)
         self.assertIn('androidTestImplementation("androidx.test.ext:junit:', build)
@@ -88,9 +88,10 @@ class AndroidContractTests(unittest.TestCase):
         self.assertNotIn("input tap", harness)
         runner_script = (ROOT.parent / "scripts/run_live_avd_selection.py").read_text(encoding="utf-8")
         self.assertIn("pickerharness-debug-androidTest.apk", runner_script)
-        self.assertIn("com.pacer.test.pickerharness.test/androidx.test.runner.AndroidJUnitRunner", runner_script)
-        self.assertIn('"shell", "pm", "list", "instrumentation"', runner_script)
-        self.assertIn("Registered instrumentation (sanitized):", runner_script)
+        self.assertIn("com.android.contacts.test/androidx.test.runner.AndroidJUnitRunner", runner_script)
+        self.assertIn('"shell", "pm", "list", "packages", "com.android.contacts.test"', runner_script)
+        self.assertIn("harness_installed_by_probe = False", runner_script)
+        self.assertIn("harness_installed_by_probe = True", runner_script)
         workflow = (ROOT.parent / ".github/workflows/avd-selection-spike.yml").read_text(encoding="utf-8")
         self.assertIn(":pickerharness:assembleDebugAndroidTest", workflow)
 

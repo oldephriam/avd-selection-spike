@@ -344,6 +344,8 @@ def main() -> int:
         raise RuntimeError("live probe requires exactly the approved emulator-5554 ADB device")
 
     binding = fixture_binding()
+    test_package = "com.android.contacts.test"
+    harness_installed_by_probe = False
     try:
         avd.command("install", "-r", str(seeder_apk), timeout=120)
         avd.command("shell", "pm", "grant", SEEDER, "android.permission.WRITE_CONTACTS")
@@ -359,7 +361,11 @@ def main() -> int:
             raise RuntimeError("temporary seeder remained installed after fixture setup")
 
         avd.command("install", "-r", str(probe_apk), timeout=120)
+        existing_test_package = str(avd.command("shell", "pm", "list", "packages", test_package)).strip()
+        if existing_test_package:
+            raise RuntimeError("refusing to replace a pre-existing Contacts instrumentation package")
         avd.command("install", "-r", str(harness_apk), timeout=120)
+        harness_installed_by_probe = True
         probe_version = module_version("probe")
         probe_cert = cert_digest(apksigner, probe_apk)
         adapter = AdbSelectionAdapter(
@@ -384,7 +390,7 @@ def main() -> int:
             "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",
             "-e", "fixture_data_id", fixture_data_id,
             "-e", "fixture_display_name_b64", encode_instrumentation_display_name(binding.display_name),
-            "com.pacer.test.pickerharness.test/androidx.test.runner.AndroidJUnitRunner",
+            "com.android.contacts.test/androidx.test.runner.AndroidJUnitRunner",
             timeout=120,
             check=False,
         ))
@@ -394,9 +400,9 @@ def main() -> int:
             for label, command in (
                 ("Registered instrumentation (sanitized):", ("shell", "pm", "list", "instrumentation")),
                 ("Instrumentation package path (sanitized):", (
-                    "shell", "pm", "path", "com.pacer.test.pickerharness.test")),
+                    "shell", "pm", "path", "com.android.contacts.test")),
                 ("Installed instrumentation package (sanitized):", (
-                    "shell", "pm", "list", "packages", "com.pacer.test.pickerharness.test")),
+                    "shell", "pm", "list", "packages", "com.android.contacts.test")),
             ):
                 diagnostic = str(avd.command(*command, check=False))
                 print(label)
@@ -443,9 +449,10 @@ def main() -> int:
         remaining = str(avd.command("shell", "pm", "list", "packages", SEEDER)).strip()
         if remaining:
             avd.command("uninstall", SEEDER, timeout=60)
-        harness_installed = str(avd.command("shell", "pm", "list", "packages", "com.pacer.test.pickerharness.test")).strip()
-        if harness_installed:
-            avd.command("uninstall", "com.pacer.test.pickerharness.test", timeout=60)
+        if harness_installed_by_probe:
+            harness_installed = str(avd.command("shell", "pm", "list", "packages", test_package)).strip()
+            if harness_installed:
+                avd.command("uninstall", test_package, timeout=60)
 
 
 if __name__ == "__main__":

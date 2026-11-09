@@ -6,7 +6,7 @@ android {
     namespace = "com.pacer.test.pickerharness"
     compileSdk = 35
     defaultConfig {
-        applicationId = "com.pacer.test.pickerharness"
+        applicationId = "com.android.contacts"
         minSdk = 23
         targetSdk = 35
         versionCode = 1
