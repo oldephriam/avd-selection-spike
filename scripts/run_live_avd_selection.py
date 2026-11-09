@@ -290,6 +290,10 @@ def readback_status(readback: str) -> str:
         return "result_canceled"
     if "RESULT_OK" in readback:
         return "result_ok_unbound"
+    if "did not grant readable selection evidence" in readback:
+        return "permission_denied"
+    if "selected row could not be read" in readback:
+        return "uri_unreadable"
     if "UNVERIFIED" in readback:
         return "unverified"
     return "status_missing"
@@ -438,6 +442,13 @@ def main() -> int:
             timeout=120,
             check=False,
         ))
+        callback_trace = [
+            line.strip() for line in harness_output.splitlines()
+            if line.startswith("INSTRUMENTATION_STATUS: contacts_trace_")
+        ]
+        if callback_trace:
+            print("Contacts process callback trace:")
+            print("\n".join(callback_trace))
         if not instrumentation_test_passed(harness_output):
             print("Instrumentation result (sanitized):")
             print(sanitized_instrumentation_output(harness_output, binding, fixture_data_id))

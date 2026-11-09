@@ -143,6 +143,8 @@ class LiveAvdCommandTests(unittest.TestCase):
 
     def test_readback_status_classification_omits_fixture_values(self) -> None:
         self.assertEqual(live.readback_status("UNVERIFIED: picker returned RESULT_CANCELED"), "result_canceled")
+        self.assertEqual(live.readback_status("UNVERIFIED: picker did not grant readable selection evidence"), "permission_denied")
+        self.assertEqual(live.readback_status("UNVERIFIED: selected row could not be read"), "uri_unreadable")
         self.assertEqual(live.readback_status("RESULT_OK: BOUND CANDIDATE"), "result_ok")
         self.assertEqual(live.readback_status("no selection data"), "status_missing")
 

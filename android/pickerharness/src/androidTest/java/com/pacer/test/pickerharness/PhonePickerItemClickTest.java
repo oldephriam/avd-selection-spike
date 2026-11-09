@@ -4,12 +4,20 @@ import android.app.Activity;
 import android.app.Instrumentation;
 import android.content.Intent;
 import android.database.Cursor;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Looper;
 import android.util.Base64;
 import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ListAdapter;
 import android.widget.ListView;
+import android.widget.WrapperListAdapter;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.List;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitor;
@@ -232,9 +240,108 @@ public final class PhonePickerItemClickTest {
             return new ClickOutcome(false, false, matchPosition,
                     "fixture row view is unavailable, hidden, or detached");
         }
-        boolean listenerInvoked = list.performItemClick(
-                row, matchPosition, list.getItemIdAtPosition(matchPosition));
-        return new ClickOutcome(true, listenerInvoked, matchPosition, "clicked");
+        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        AdapterView.OnItemClickListener originalListener = list.getOnItemClickListener();
+        final boolean[] originalListenerReturned = new boolean[1];
+        AdapterView.OnItemClickListener traceListener = (parent, clickedView, position, id) -> {
+            int callbackHeaderCount = list.getHeaderViewsCount();
+            String uriLookup = describeAdapterDataUri(
+                    list.getAdapter(), position, callbackHeaderCount);
+            sendCallbackTrace(instrumentation, "callback_enter", originalListener.getClass().getName(),
+                    position, callbackHeaderCount, uriLookup, "not-read", "not-read");
+            try {
+                originalListener.onItemClick(parent, clickedView, position, id);
+                originalListenerReturned[0] = true;
+            } catch (RuntimeException | Error failure) {
+                sendCallbackTrace(instrumentation, "callback_throw", originalListener.getClass().getName(),
+                        position, callbackHeaderCount, uriLookup, "exception=" + failure.getClass().getName(),
+                        "result-snapshot=skipped");
+                throw failure;
+            }
+            sendCallbackTrace(instrumentation, "callback_exit", originalListener.getClass().getName(),
+                    position, callbackHeaderCount, uriLookup, inspectPickerActivityResult(picker),
+                    "finishing=" + picker.isFinishing());
+        };
+        list.setOnItemClickListener(traceListener);
+        boolean performItemClickReturned;
+        try {
+            performItemClickReturned = list.performItemClick(
+                    row, matchPosition, list.getItemIdAtPosition(matchPosition));
+        } finally {
+            list.setOnItemClickListener(originalListener);
+        }
+        return new ClickOutcome(true, performItemClickReturned && originalListenerReturned[0],
+                matchPosition, "clicked; " + inspectPickerActivityResult(picker));
+    }
+
+    private static String describeAdapterDataUri(ListAdapter adapter, int listPosition, int headerCount) {
+        ListAdapter wrapped = adapter;
+        while (wrapped instanceof WrapperListAdapter) {
+            wrapped = ((WrapperListAdapter) wrapped).getWrappedAdapter();
+        }
+        int dataPosition = listPosition - headerCount;
+        try {
+            Method getDataUri = wrapped.getClass().getMethod("getDataUri", int.class);
+            Object value = getDataUri.invoke(wrapped, dataPosition);
+            return "lookup=ok;dataPosition=" + dataPosition + ";" + describeUri(value instanceof Uri
+                    ? (Uri) value : null);
+        } catch (InvocationTargetException failure) {
+            Throwable cause = failure.getCause();
+            return "lookup=threw;cause=" + (cause == null
+                    ? failure.getClass().getSimpleName() : cause.getClass().getName());
+        } catch (ReflectiveOperationException | RuntimeException failure) {
+            return "lookup=unavailable;cause=" + failure.getClass().getSimpleName();
+        }
+    }
+
+    private static String describeUri(Uri uri) {
+        if (uri == null) {
+            return "uriPresent=false";
+        }
+        List<String> pathSegments = uri.getPathSegments();
+        boolean contactDataUri = !pathSegments.isEmpty() && "data".equals(pathSegments.get(0));
+        return "uriPresent=true;scheme=" + uri.getScheme()
+                + ";authority=" + uri.getAuthority()
+                + ";contactDataUri=" + contactDataUri
+                + ";pathSegments=" + pathSegments.size();
+    }
+
+    private static String inspectPickerActivityResult(Activity activity) {
+        try {
+            Field resultCodeField = Activity.class.getDeclaredField("mResultCode");
+            Field resultDataField = Activity.class.getDeclaredField("mResultData");
+            resultCodeField.setAccessible(true);
+            resultDataField.setAccessible(true);
+            int resultCode = resultCodeField.getInt(activity);
+            Intent resultData = (Intent) resultDataField.get(activity);
+            Uri resultUri = resultData == null ? null : resultData.getData();
+            boolean readGrant = resultData != null
+                    && (resultData.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0;
+            return "reflection=ok;resultCode=" + resultCode
+                    + ";resultIntentPresent=" + (resultData != null)
+                    + ";" + describeUri(resultUri)
+                    + ";readGrant=" + readGrant;
+        } catch (ReflectiveOperationException | RuntimeException failure) {
+            return "reflection=unavailable;cause=" + failure.getClass().getSimpleName();
+        }
+    }
+
+    private static void sendCallbackTrace(Instrumentation instrumentation, String stage,
+                                          String listenerClass, int listPosition, int headerCount,
+                                          String uriLookup, String resultState, String lifecycleState) {
+        Bundle trace = new Bundle();
+        trace.putString("contacts_trace_stage", stage);
+        trace.putString("contacts_trace_listener", listenerClass);
+        trace.putInt("contacts_trace_list_position", listPosition);
+        trace.putInt("contacts_trace_header_count", headerCount);
+        trace.putString("contacts_trace_adapter_uri", uriLookup);
+        trace.putString("contacts_trace_activity_result", resultState);
+        trace.putString("contacts_trace_lifecycle", lifecycleState);
+        try {
+            instrumentation.sendStatus(0, trace);
+        } catch (RuntimeException ignored) {
+            // Diagnostic transport must not alter Contacts picker behavior.
+        }
     }
 
     private static String describePickerViews(Activity activity, View root) {
