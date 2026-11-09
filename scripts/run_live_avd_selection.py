@@ -132,6 +132,51 @@ class AVD:
             f"observed accessibility text={last_values[:500]!r}"
         )
 
+    def selection_diagnostics(self) -> str:
+        root = ET.fromstring(self.hierarchy())
+        parents = {child: parent for parent in root.iter() for child in parent}
+        visible_text = " ".join(
+            value.strip()
+            for node in root.iter()
+            for value in (node.attrib.get("text", ""), node.attrib.get("content-desc", ""))
+            if value.strip()
+        )
+        readback = "selection_readback" in visible_text
+        matches = []
+        for node in root.iter():
+            text = " ".join((node.attrib.get("text", ""), node.attrib.get("content-desc", "")))
+            if "Pacer Probe Fixture" not in text:
+                continue
+            chain = []
+            current = node
+            list_row = None
+            while current is not None and len(chain) < 8:
+                chain.append(current)
+                if current.attrib.get("class") == "android.widget.ListView":
+                    list_row = chain[-2] if len(chain) >= 2 else None
+                    break
+                current = parents.get(current)
+            target = next((item for item in chain if item.attrib.get("clickable") == "true"), list_row)
+            target_desc = "none"
+            if target is not None:
+                target_desc = "class={}:clickable={}:enabled={}:bounds={}".format(
+                    target.attrib.get("class", ""),
+                    target.attrib.get("clickable", "false"),
+                    target.attrib.get("enabled", "false"),
+                    target.attrib.get("bounds", ""),
+                )
+            chain_desc = " > ".join(
+                f"{item.attrib.get('class', '')}(clickable={item.attrib.get('clickable', 'false')},"
+                f"enabled={item.attrib.get('enabled', 'false')},bounds={item.attrib.get('bounds', '')})"
+                for item in chain
+            )
+            matches.append(f"target=[{target_desc}] chain=[{chain_desc}]")
+        text_excerpt = re.sub(r"\d", "", visible_text)[:500]
+        return (
+            f"foreground={self.foreground()} readback={readback} "
+            f"fixtureRows={matches[:5]!r} visibleText={text_excerpt!r}"
+        )
+
 
 def module_version(module: str) -> str:
     source = (ROOT / "android" / module / "build.gradle.kts").read_text(encoding="utf-8")
@@ -302,6 +347,10 @@ def main() -> int:
                 f"candidateParse={frame.candidate_diagnostics!r}"
             )
         if result.status is not ProbeStatus.BOUND or result.evidence is None:
+            try:
+                print(f"Post-selection UI diagnostic: {avd.selection_diagnostics()}")
+            except (RuntimeError, ET.ParseError) as diagnostic_error:
+                print(f"Post-selection UI diagnostic unavailable: {type(diagnostic_error).__name__}")
             raise RuntimeError(f"live selection probe failed closed: {result.status.value}: {result.detail}")
         print("Live selection probe BOUND; returned probe surface/readback and pinned identities verified.")
         print(f"Evidence SHA-256: screenshot={result.evidence.screenshot_sha256}, hierarchy={result.evidence.hierarchy_sha256}")

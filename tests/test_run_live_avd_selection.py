@@ -13,6 +13,26 @@ import run_live_avd_selection as live
 
 
 class LiveAvdCommandTests(unittest.TestCase):
+    def test_selection_diagnostics_show_readback_and_matching_row_targets_safely(self) -> None:
+        avd = live.AVD("adb")
+        avd.hierarchy = lambda: (
+            b'<hierarchy><node class="android.widget.ListView" clickable="false" '
+            b'enabled="true" bounds="[0,10][400,800]"><node class="android.view.ViewGroup" '
+            b'clickable="false" enabled="true" bounds="[0,20][400,100]">'
+            b'<node text="Pacer Probe Fixture 001" clickable="false" enabled="true" '
+            b'bounds="[10,30][300,70]"/></node></node><node content-desc="selection_readback: '
+            b'BOUND CANDIDATE recipient_key=+12055550100"/></hierarchy>'
+        )
+        avd.foreground = lambda: live.PROBE
+
+        diagnostic = avd.selection_diagnostics()
+
+        self.assertIn("foreground=com.pacer.test.probe", diagnostic)
+        self.assertIn("readback=True", diagnostic)
+        self.assertIn("android.view.ViewGroup", diagnostic)
+        self.assertIn("clickable=false", diagnostic)
+        self.assertNotIn("12055550100", diagnostic)
+
     def test_button_bounds_reports_observed_control_when_label_is_absent(self) -> None:
         hierarchy = (
             b'<hierarchy><node text="Permission required" clickable="true" '
