@@ -82,6 +82,13 @@ class LiveAvdCommandTests(unittest.TestCase):
             "content://com.android.contacts/contacts",
         ])
 
+    def test_command_can_capture_nonzero_instrumentation_output(self) -> None:
+        avd = live.AVD("adb")
+        with patch.object(live, "run", return_value="usage from am") as run_command:
+            output = avd.command("shell", "am", "instrument", "-w", check=False)
+        self.assertEqual(output, "usage from am")
+        self.assertFalse(run_command.call_args.kwargs["check"])
+
     def test_fixture_phone_data_id_is_bound_to_unique_phone_provider_row(self) -> None:
         binding = live.fixture_binding()
         source = (live.ROOT / "android/seeder/src/main/java/com/pacer/test/seeder/SeederActivity.java").read_text(encoding="utf-8")
@@ -144,6 +151,7 @@ class LiveAvdCommandTests(unittest.TestCase):
             ["adb", "-s", live.SERIAL, "install", "-r", "probe.apk"],
             text=True,
             timeout=120,
+            check=True,
         )
     def test_button_bounds_recognizes_android_all_caps_button_text(self) -> None:
         hierarchy = (

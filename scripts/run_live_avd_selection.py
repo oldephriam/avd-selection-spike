@@ -24,9 +24,11 @@ PICKER = "com.android.contacts"
 SNAPSHOT = "pacer-avd-synthetic-fixture-v1"
 
 
-def run(args: list[str], *, text: bool = True, timeout: int = 30) -> str | bytes:
+def run(args: list[str], *, text: bool = True, timeout: int = 30, check: bool = True) -> str | bytes:
     result = subprocess.run(args, capture_output=True, text=text, timeout=timeout, check=False, shell=False)
     if result.returncode:
+        if not check:
+            return result.stdout + result.stderr
         raise RuntimeError(f"command failed ({Path(args[0]).name}, status {result.returncode})")
     return result.stdout
 
@@ -36,8 +38,8 @@ class AVD:
         self.adb_path = adb
         self._dump_counter = 0
 
-    def command(self, *args: str, text: bool = True, timeout: int = 30) -> str | bytes:
-        return run([self.adb_path, "-s", SERIAL, *args], text=text, timeout=timeout)
+    def command(self, *args: str, text: bool = True, timeout: int = 30, check: bool = True) -> str | bytes:
+        return run([self.adb_path, "-s", SERIAL, *args], text=text, timeout=timeout, check=check)
 
     def foreground(self) -> str:
         report = str(self.command("shell", "dumpsys", "activity", "activities"))
@@ -371,6 +373,7 @@ def main() -> int:
             "-e", "fixture_display_name_b64", encode_instrumentation_display_name(binding.display_name),
             "com.pacer.test.pickerharness/.PickerInstrumentationRunner",
             timeout=120,
+            check=False,
         ))
         if ("OK (1 test)" not in harness_output or "INSTRUMENTATION_CODE: -1" not in harness_output):
             print("Instrumentation result (sanitized):")
