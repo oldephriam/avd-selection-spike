@@ -2,7 +2,7 @@
     xmlns:tools="http://schemas.android.com/tools">
     <application>
         <activity
-            android:name=".ProbeLaunchActivity"
+            android:name="com.pacer.test.pickerharness.ProbeLaunchActivity"
             android:exported="false"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>
