@@ -260,7 +260,7 @@ public final class PhonePickerItemClickTest {
             }
             sendCallbackTrace(instrumentation, "callback_exit", originalListener.getClass().getName(),
                     position, callbackHeaderCount, uriLookup, inspectPickerActivityResult(picker),
-                    "finishing=" + picker.isFinishing());
+                    describeActivityLaunchContext(picker));
         };
         list.setOnItemClickListener(traceListener);
         boolean performItemClickReturned;
@@ -304,6 +304,19 @@ public final class PhonePickerItemClickTest {
                 + ";authority=" + uri.getAuthority()
                 + ";contactDataUri=" + contactDataUri
                 + ";pathSegments=" + pathSegments.size();
+    }
+
+    private static String describeActivityLaunchContext(Activity activity) {
+        android.content.ComponentName caller = activity.getCallingActivity();
+        int flags = activity.getIntent() == null ? 0 : activity.getIntent().getFlags();
+        return "finishing=" + activity.isFinishing()
+                + ";caller=" + (caller == null
+                        ? "none" : caller.getPackageName() + "/" + caller.getClassName())
+                + ";launchFlags{newTask=" + ((flags & Intent.FLAG_ACTIVITY_NEW_TASK) != 0)
+                + ",forwardResult=" + ((flags & Intent.FLAG_ACTIVITY_FORWARD_RESULT) != 0)
+                + ",clearTask=" + ((flags & Intent.FLAG_ACTIVITY_CLEAR_TASK) != 0)
+                + ",clearTop=" + ((flags & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0)
+                + ",multipleTask=" + ((flags & Intent.FLAG_ACTIVITY_MULTIPLE_TASK) != 0) + "}";
     }
 
     private static String inspectPickerActivityResult(Activity activity) {
