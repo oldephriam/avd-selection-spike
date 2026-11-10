@@ -87,7 +87,7 @@ class AndroidContractTests(unittest.TestCase):
         launcher = android_test_manifest.find("application/activity")
         self.assertIsNotNone(launcher)
         self.assertEqual(attr(launcher, "name"), "com.pacer.test.pickerharness.ProbeLaunchActivity")
-        self.assertEqual(attr(launcher, "exported"), "false")
+        self.assertEqual(attr(launcher, "exported"), "true")
         self.assertIsNone(launcher.find("intent-filter"))
         self.assertIsNone(launcher.get("{http://schemas.android.com/apk/res/android}launchMode"))
         self.assertIsNone(launcher.get("{http://schemas.android.com/apk/res/android}taskAffinity"))

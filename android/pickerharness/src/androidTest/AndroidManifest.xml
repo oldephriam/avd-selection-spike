@@ -3,7 +3,7 @@
     <application>
         <activity
             android:name="com.pacer.test.pickerharness.ProbeLaunchActivity"
-            android:exported="false"
+            android:exported="true"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>
     <instrumentation
