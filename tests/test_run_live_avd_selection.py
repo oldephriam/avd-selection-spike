@@ -141,6 +141,22 @@ class LiveAvdCommandTests(unittest.TestCase):
 
         self.assertEqual(live.fixture_phone_data_id(FakeAvd()), "900")
 
+    def test_probe_result_trace_preserves_outcome_and_redacts_uri_identifiers(self) -> None:
+        line = (
+            "07-01 00:00:00.000 123 456 I PacerProbeResult: RESULT_TRACE "
+            "requestCode=41;resultCode=0;dataPresent=false;uriPresent=false;scheme=none;"
+            "authority=none;readGrantFlag=false;uriPermission=not-checkable"
+        )
+        formatted = live.format_probe_result_trace(line)
+        self.assertEqual(
+            formatted,
+            "PROBE_RESULT_TRACE requestMatches=true;resultCode=RESULT_CANCELED;"
+            "dataPresent=false;uriPresent=false;scheme=none;authority=none;"
+            "readGrantFlag=false;uriPermission=not-checkable",
+        )
+        self.assertNotIn("123", formatted)
+        self.assertNotIn("456", formatted)
+
     def test_readback_status_classification_omits_fixture_values(self) -> None:
         self.assertEqual(live.readback_status("UNVERIFIED: picker returned RESULT_CANCELED"), "result_canceled")
         self.assertEqual(live.readback_status("UNVERIFIED: picker did not grant readable selection evidence"), "permission_denied")

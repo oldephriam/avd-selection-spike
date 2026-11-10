@@ -283,6 +283,44 @@ def fixture_phone_number() -> str:
     return phone.group(1)
 
 
+def format_probe_result_trace(line: str) -> str | None:
+    marker = "PacerProbeResult:"
+    if marker not in line:
+        return None
+    message = line.split(marker, 1)[1].strip()
+    if message.startswith("RESULT_TRACE "):
+        payload = message.removeprefix("RESULT_TRACE ")
+        fields = dict(re.findall(r"([A-Za-z][A-Za-z0-9]*)=([^;\s]+)", payload))
+        result_code = {"-1": "RESULT_OK", "0": "RESULT_CANCELED"}.get(
+            fields.get("resultCode", ""), "RESULT_OTHER",
+        )
+        request_match = fields.get("requestCode") == "41"
+        data_present = fields.get("dataPresent") if fields.get("dataPresent") in ("true", "false") else "unknown"
+        uri_present = fields.get("uriPresent") if fields.get("uriPresent") in ("true", "false") else "unknown"
+        scheme = fields.get("scheme") if fields.get("scheme") in ("content", "none") else "other"
+        authority = fields.get("authority") if fields.get("authority") in ("com.android.contacts", "none") else "other"
+        read_grant = fields.get("readGrantFlag") if fields.get("readGrantFlag") in ("true", "false") else "unknown"
+        uri_permission = fields.get("uriPermission") if fields.get("uriPermission") in (
+            "granted", "denied", "not-checkable",
+        ) else "other"
+        return (
+            "PROBE_RESULT_TRACE requestMatches=" + str(request_match).lower()
+            + ";resultCode=" + result_code
+            + ";dataPresent=" + data_present
+            + ";uriPresent=" + uri_present
+            + ";scheme=" + scheme
+            + ";authority=" + authority
+            + ";readGrantFlag=" + read_grant
+            + ";uriPermission=" + uri_permission
+        )
+    if message.startswith("READBACK_TRACE "):
+        fields = dict(re.findall(r"([A-Za-z][A-Za-z0-9]*)=([^;\s]+)", message.removeprefix("READBACK_TRACE ")))
+        outcome = fields.get("outcome")
+        if outcome in ("security_exception", "invalid_uri"):
+            return "PROBE_READBACK_TRACE outcome=" + outcome
+    return None
+
+
 def readback_status(readback: str) -> str:
     if "RESULT_OK: BOUND CANDIDATE" in readback:
         return "result_ok"
@@ -493,15 +531,14 @@ def main() -> int:
         probe_result_log = str(avd.command(
             "shell", "logcat", "-d", "-s", "PacerProbeResult:I", check=False,
         ))
-        probe_result_trace = [
-            line.strip() for line in probe_result_log.splitlines()
-            if "PacerProbeResult" in line and ("RESULT_TRACE" in line or "READBACK_TRACE" in line)
-        ]
+        probe_result_trace = []
+        for line in probe_result_log.splitlines():
+            formatted_trace = format_probe_result_trace(line)
+            if formatted_trace is not None:
+                probe_result_trace.append(formatted_trace)
         if probe_result_trace:
             print("Probe result-delivery trace:")
-            print("\n".join(sanitized_instrumentation_output(
-                "\n".join(probe_result_trace), binding, fixture_data_id,
-            ).splitlines()))
+            print("\n".join(probe_result_trace))
         expected_fields = (
             ("status", "RESULT_OK: BOUND CANDIDATE"),
             ("contact_row_id", f"contact_row_id={fixture_data_id}"),
