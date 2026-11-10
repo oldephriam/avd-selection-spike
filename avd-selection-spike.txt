@@ -255,7 +255,21 @@ jobs:
       - name: Run live synthetic-contact selection probe
         if: steps.picker.outputs.verified == 'true'
         shell: bash
-        run: python scripts/run_live_avd_selection.py
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/avd-logs"
+          python scripts/run_live_avd_selection.py 2>&1 | tee "$RUNNER_TEMP/avd-logs/live-selection.log"
+
+      - name: Capture focused logcat on failure
+        if: failure() && steps.picker.outputs.verified == 'true'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/avd-logs"
+          adb -s emulator-5554 logcat -d -v threadtime -t 3000 -s \
+            PacerProbeResult:I AndroidRuntime:E ActivityTaskManager:W ActivityManager:W \
+            > "$RUNNER_TEMP/avd-logs/failure-logcat.txt" 2>&1 || \
+            echo 'Could not capture focused logcat; see live-selection.log for runner output.' \
+              > "$RUNNER_TEMP/avd-logs/failure-logcat.txt"
 
       - name: Upload picker pin and emulator diagnostics
         if: always()
@@ -265,5 +279,7 @@ jobs:
           path: |
             ${{ runner.temp }}/avd-logs/aosp-picker-identity.json
             ${{ runner.temp }}/avd-logs/emulator.log
+            ${{ runner.temp }}/avd-logs/live-selection.log
+            ${{ runner.temp }}/avd-logs/failure-logcat.txt
           if-no-files-found: ignore
           retention-days: 14
