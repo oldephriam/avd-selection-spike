@@ -34,8 +34,7 @@ import static org.junit.Assert.assertTrue;
 
 @RunWith(JUnit4.class)
 public final class PhonePickerItemClickTest {
-    private static final String PROBE_PACKAGE = "com.pacer.test.probe";
-    private static final String PROBE_ACTIVITY = "com.pacer.test.probe.ProbeActivity";
+    private static final String PROBE_LAUNCHER = "com.pacer.test.pickerharness.ProbeLaunchActivity";
     private static final String PICKER_ACTIVITY = "com.android.contacts.activities.ContactSelectionActivity";
     private static final String PHONE_DATA_ID_ARGUMENT = "fixture_data_id";
     private static final String DISPLAY_NAME_ARGUMENT = "fixture_display_name_b64";
@@ -63,11 +62,11 @@ public final class PhonePickerItemClickTest {
                 normalizedExpectedPhone.matches("[2-9][0-9]{2}[2-9][0-9]{6}"));
 
         ActivityLifecycleMonitor lifecycleMonitor = ActivityLifecycleMonitorRegistry.getInstance();
-        Intent probe = new Intent();
-        probe.setClassName(PROBE_PACKAGE, PROBE_ACTIVITY);
-        probe.putExtra("pacer_test_launch_picker", true);
-        probe.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        instrumentation.getContext().startActivity(probe);
+        Intent launcher = new Intent();
+        launcher.setClassName("com.android.contacts.test", PROBE_LAUNCHER);
+        launcher.putExtra("pacer_test_launch_probe", true);
+        launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        instrumentation.getContext().startActivity(launcher);
 
         final Activity[] pickerState = new Activity[1];
         final long resumeDeadline = android.os.SystemClock.elapsedRealtime() + LOAD_TIMEOUT_MILLIS;

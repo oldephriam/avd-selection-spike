@@ -84,6 +84,14 @@ class AndroidContractTests(unittest.TestCase):
         self.assertEqual(attr(instrumentation, "targetPackage"), "com.android.contacts")
         self.assertEqual(attr(instrumentation, "name"), "androidx.test.runner.AndroidJUnitRunner")
         self.assertEqual(instrumentation.get("{http://schemas.android.com/tools}node"), "replace")
+        launcher = android_test_manifest.find("application/activity")
+        self.assertIsNotNone(launcher)
+        self.assertEqual(attr(launcher, "name"), ".ProbeLaunchActivity")
+        self.assertEqual(attr(launcher, "exported"), "false")
+        launcher_source = (ROOT / module / "src/androidTest/java/com/pacer/test/pickerharness/"
+                           "ProbeLaunchActivity.java").read_text(encoding="utf-8")
+        self.assertIn("startActivityForResult(probe, PROBE_REQUEST_CODE)", launcher_source)
+        self.assertNotIn("FLAG_ACTIVITY_NEW_TASK", launcher_source)
         harness = (ROOT / module / "src/androidTest/java/com/pacer/test/pickerharness/"
                    "PhonePickerItemClickTest.java").read_text(encoding="utf-8")
         self.assertIn("@RunWith(JUnit4.class)", harness)
