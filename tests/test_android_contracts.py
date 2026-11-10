@@ -106,6 +106,10 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn("getCallingActivity()", harness)
         self.assertIn("describeActivityLaunchContext(picker)", harness)
         self.assertIn("launchFlags{newTask=", harness)
+        self.assertLess(
+            harness.index("String launchContext = describeActivityLaunchContext(picker);"),
+            harness.index("originalListener.onItemClick(parent, clickedView, position, id);"),
+        )
         self.assertIn("FLAG_ACTIVITY_NEW_TASK", harness)
         self.assertIn('getMethod("getDataUri", int.class)', harness)
         self.assertIn("contactDataUri=", harness)

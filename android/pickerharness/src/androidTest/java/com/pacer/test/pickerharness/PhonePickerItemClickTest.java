@@ -247,8 +247,9 @@ public final class PhonePickerItemClickTest {
             int callbackHeaderCount = list.getHeaderViewsCount();
             String uriLookup = describeAdapterDataUri(
                     list.getAdapter(), position, callbackHeaderCount);
+            String launchContext = describeActivityLaunchContext(picker);
             sendCallbackTrace(instrumentation, "callback_enter", originalListener.getClass().getName(),
-                    position, callbackHeaderCount, uriLookup, "not-read", "not-read");
+                    position, callbackHeaderCount, uriLookup, "not-read", launchContext);
             try {
                 originalListener.onItemClick(parent, clickedView, position, id);
                 originalListenerReturned[0] = true;
@@ -260,7 +261,7 @@ public final class PhonePickerItemClickTest {
             }
             sendCallbackTrace(instrumentation, "callback_exit", originalListener.getClass().getName(),
                     position, callbackHeaderCount, uriLookup, inspectPickerActivityResult(picker),
-                    describeActivityLaunchContext(picker));
+                    "finishing=" + picker.isFinishing() + ";launchContextBeforeCallback=" + launchContext);
         };
         list.setOnItemClickListener(traceListener);
         boolean performItemClickReturned;
