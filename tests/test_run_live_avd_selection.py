@@ -329,6 +329,11 @@ class LiveAvdCommandTests(unittest.TestCase):
         )
         self.assertEqual(missing, ("contact_row_id",))
 
+    def test_readback_row_id_linkage_is_reported_as_boolean_without_exposing_ids(self) -> None:
+        self.assertTrue(live.readback_contact_row_id_matches("contact_row_id=12", "12"))
+        self.assertFalse(live.readback_contact_row_id_matches("contact_row_id=34", "12"))
+        self.assertFalse(live.readback_contact_row_id_matches("no row id present", "12"))
+
     def test_instrumentation_pass_accepts_junit_success_without_optional_am_result_marker(self) -> None:
         output = "com.pacer.test.pickerharness.PhonePickerItemClickTest:.\nTime: 0.02\n\nOK (1 test)\n"
         self.assertTrue(live.instrumentation_test_passed(output))

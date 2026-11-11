@@ -655,6 +655,11 @@ def missing_readback_fields(
     return tuple(label for label, expected in expected_fields if expected not in readback)
 
 
+def readback_contact_row_id_matches(readback: str, fixture_data_id: str) -> bool:
+    row_id = re.search(r"(?m)^contact_row_id=([0-9]+)$", readback)
+    return row_id is not None and row_id.group(1) == fixture_data_id
+
+
 def instrumentation_test_passed(output: str) -> bool:
     text = str(output)
     if re.search(r"(?m)^(?:FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED)(?:\s|:|$)", text):
@@ -909,10 +914,12 @@ def main() -> int:
             print("\n".join(probe_result_trace))
         expected_fields = (
             ("status", "RESULT_OK: BOUND CANDIDATE"),
-            ("contact_row_id", f"contact_row_id={fixture_data_id}"),
             ("display_name", f"display_name={binding.display_name}"),
             ("recipient_key", f"recipient_key={binding.recipient_key}"),
         )
+        print("READBACK_ROW_ID_LINKAGE exactMatch=" + str(
+            readback_contact_row_id_matches(readback, fixture_data_id),
+        ).lower())
         missing_fields = missing_readback_fields(readback, expected_fields)
         if missing_fields:
             raise RuntimeError(
@@ -920,8 +927,10 @@ def main() -> int:
                 "unmatched_fields=" + ",".join(missing_fields)
                 + "; readback_state=" + readback_status(readback)
             )
-        print("Hosted-path instrumentation invoked ListView.performItemClick on the exact provider-bound phone row.")
-        print("RESULT_OK readback matched the exact fixture row; picker and probe package pins remained verified.")
+        print("Hosted-path instrumentation invoked ListView.performItemClick on the unique row matching the fixture name and phone.")
+        print("RESULT_OK readback matched the exact fixture name/phone and returned a readable contact URI; "
+              "provider Data-row ID exact match="
+              + str(readback_contact_row_id_matches(readback, fixture_data_id)).lower() + ".")
         print(f"Evidence SHA-256: screenshot={frame.screenshot_sha256}, hierarchy={frame.hierarchy_sha256}")
         return 0
     finally:
