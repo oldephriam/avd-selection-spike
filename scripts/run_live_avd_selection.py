@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import threading
 import time
 import xml.etree.ElementTree as ET
 
@@ -180,6 +181,86 @@ class AVD:
         )
 
 
+class FrameworkLaunchTraceCapture:
+    MAX_LOGCAT_LINES = 1200
+
+    def __init__(self, avd: AVD):
+        self.avd = avd
+        self.trace_started = False
+        self.logcat_started = False
+        self.trace_output = ""
+        self.logcat_lines: list[str] = []
+        self.logcat_process: subprocess.Popen[str] | None = None
+        self.reader: threading.Thread | None = None
+
+    def start(self) -> None:
+        try:
+            categories = str(self.avd.command("shell", "atrace", "--list_categories", timeout=10))
+            if not all(re.search(rf"(?m)^\s*{category}\s+-", categories) for category in ("am", "wm")):
+                raise RuntimeError("required atrace categories unavailable")
+            self.avd.command("shell", "atrace", "--async_start", "-b", "4096", "am", "wm", timeout=10)
+            self.trace_started = True
+        except (OSError, RuntimeError, subprocess.SubprocessError):
+            self.trace_started = False
+
+        try:
+            self.logcat_process = subprocess.Popen(
+                [
+                    self.avd.adb_path, "-s", SERIAL, "logcat", "-v", "threadtime", "-T", "1", "-s",
+                    "ActivityTaskManager:V", "ActivityManager:V",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                errors="replace",
+                bufsize=1,
+            )
+            self.logcat_started = True
+            self.reader = threading.Thread(target=self._read_logcat, daemon=True)
+            self.reader.start()
+        except (OSError, subprocess.SubprocessError):
+            self.logcat_started = False
+
+    def _read_logcat(self) -> None:
+        process = self.logcat_process
+        if process is None or process.stdout is None:
+            return
+        for line in process.stdout:
+            self.logcat_lines.append(line.rstrip("\r\n"))
+            if len(self.logcat_lines) > self.MAX_LOGCAT_LINES:
+                del self.logcat_lines[:len(self.logcat_lines) - self.MAX_LOGCAT_LINES]
+
+    def stop(self) -> tuple[str, str]:
+        if self.trace_started:
+            try:
+                self.trace_output = str(self.avd.command(
+                    "shell", "atrace", "--async_stop", timeout=20, check=False,
+                ))[:1_000_000]
+            except (OSError, RuntimeError, subprocess.SubprocessError):
+                self.trace_output = ""
+        self._stop_logcat()
+        capture_status = (
+            "FRAMEWORK_TRACE_CAPTURE atrace=" + ("captured" if self.trace_output else "unavailable")
+            + ";logcat=" + ("captured" if self.logcat_started else "unavailable")
+            + ";logcatLines=" + str(len(self.logcat_lines))
+        )
+        return capture_status, format_framework_activity_trace(self.trace_output, self.logcat_lines)
+
+    def _stop_logcat(self) -> None:
+        process = self.logcat_process
+        if process is None:
+            return
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        if self.reader is not None:
+            self.reader.join(timeout=5)
+
+
 def module_version(module: str) -> str:
     source = (ROOT / "android" / module / "build.gradle.kts").read_text(encoding="utf-8")
     name_line = next((line for line in source.splitlines() if line.strip().startswith("versionName =")), "")
@@ -337,6 +418,55 @@ def format_activity_launch_trace(line: str) -> str | None:
         + ";requestCode=" + request_code
         + ";launchIntentFlags=" + flag_value("launchIntentFlags")
         + ";incomingIntentFlags=" + flag_value("incomingIntentFlags")
+    )
+
+
+def format_framework_activity_trace(trace: str, logcat_lines: list[str]) -> str:
+    raw = (str(trace)[:1_000_000] + "\n" + "\n".join(logcat_lines[-1200:]))[:1_000_000]
+    allowed_events = {
+        "am_create_activity", "am_resume_activity", "am_pause_activity", "am_finish_activity",
+        "wm_create_activity", "wm_resume_activity", "wm_pause_activity", "wm_task_created",
+        "wm_task_moved", "wm_finish_activity",
+    }
+    events = sorted(set(re.findall(r"\b(?:am|wm)_[a-z0-9_]+\b", raw)) & allowed_events)
+    components = {
+        "contacts": (
+            "com.android.contacts/com.android.contacts.activities.ContactSelectionActivity",
+            "com.android.contacts/.activities.ContactSelectionActivity",
+        ),
+        "probe": (
+            "com.pacer.test.probe/com.pacer.test.probe.ProbeActivity",
+            "com.pacer.test.probe/.ProbeActivity",
+        ),
+        "wrapper": (
+            "com.android.contacts.test/com.pacer.test.pickerharness.ProbeLaunchActivity",
+            "com.android.contacts.test/.ProbeLaunchActivity",
+        ),
+    }
+    seen = {label: any(value in raw for value in forms) for label, forms in components.items()}
+    result_to = "not-shown"
+    canonical = {
+        "contacts": "com.android.contacts/com.android.contacts.activities.ContactSelectionActivity",
+        "probe": "com.pacer.test.probe/com.pacer.test.probe.ProbeActivity",
+        "wrapper": "com.android.contacts.test/com.pacer.test.pickerharness.ProbeLaunchActivity",
+    }
+    pattern = r"\b(?:mResultTo|resultTo)\s*=\s*(ActivityRecord\{[^}]*\}|[^\s,]+)"
+    for match in re.finditer(pattern, raw, re.I):
+        for label, forms in components.items():
+            if any(value in match.group(1) for value in forms):
+                result_to = canonical[label]
+                break
+        if result_to != "not-shown":
+            break
+    request_codes = sorted(set(re.findall(r"\b(?:mRequestCode|requestCode)\s*=\s*(41|73)\b", raw, re.I)))
+    return (
+        "FRAMEWORK_ACTIVITY_TRACE events=" + (",".join(events) if events else "none")
+        + ";contacts=" + ("seen" if seen["contacts"] else "not-shown")
+        + ";probe=" + ("seen" if seen["probe"] else "not-shown")
+        + ";wrapper=" + ("seen" if seen["wrapper"] else "not-shown")
+        + ";resultTo=" + result_to
+        + ";requestCodes=" + (",".join(request_codes) if request_codes else "not-shown")
+        + ";logcatLines=" + str(min(len(logcat_lines), FrameworkLaunchTraceCapture.MAX_LOGCAT_LINES))
     )
 
 
@@ -545,16 +675,23 @@ def main() -> int:
             print(sanitized_instrumentation_output(parser_test_output, binding, fixture_data_id))
             raise RuntimeError("bounded ActivityTaskManager parser fixture did not pass")
         print("ActivityTaskManager API 35 parser fixture passed.")
-        harness_output = str(avd.command(
-            "shell", "am", "instrument", "-w",
-            "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",
-            "-e", "fixture_data_id", fixture_data_id,
-            "-e", "fixture_display_name_b64", encode_instrumentation_display_name(binding.display_name),
-            "-e", "fixture_phone_b64", encode_instrumentation_value(fixture_phone),
-            "com.android.contacts.test/androidx.test.runner.AndroidJUnitRunner",
-            timeout=120,
-            check=False,
-        ))
+        framework_trace = FrameworkLaunchTraceCapture(avd)
+        framework_trace.start()
+        try:
+            harness_output = str(avd.command(
+                "shell", "am", "instrument", "-w",
+                "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",
+                "-e", "fixture_data_id", fixture_data_id,
+                "-e", "fixture_display_name_b64", encode_instrumentation_display_name(binding.display_name),
+                "-e", "fixture_phone_b64", encode_instrumentation_value(fixture_phone),
+                "com.android.contacts.test/androidx.test.runner.AndroidJUnitRunner",
+                timeout=120,
+                check=False,
+            ))
+        finally:
+            trace_status, framework_summary = framework_trace.stop()
+            print(trace_status)
+            print(framework_summary)
         callback_trace = [
             line.strip() for line in harness_output.splitlines()
             if line.startswith("INSTRUMENTATION_STATUS: contacts_trace_")

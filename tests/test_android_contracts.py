@@ -111,6 +111,9 @@ class AndroidContractTests(unittest.TestCase):
         runner_script = (ROOT.parent / "scripts/run_live_avd_selection.py").read_text(encoding="utf-8")
         self.assertIn('"PacerLaunchTrace:I"', runner_script)
         self.assertIn("ACTIVITY_LAUNCH_TRACE", runner_script)
+        self.assertIn('"--async_start", "-b", "4096", "am", "wm"', runner_script)
+        self.assertIn('"ActivityTaskManager:V", "ActivityManager:V"', runner_script)
+        self.assertIn("format_framework_activity_trace", runner_script)
 
         harness = (ROOT / module / "src/androidTest/java/com/pacer/test/pickerharness/"
                    "PhonePickerItemClickTest.java").read_text(encoding="utf-8")

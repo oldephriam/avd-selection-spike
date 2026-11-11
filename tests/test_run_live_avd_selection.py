@@ -182,6 +182,41 @@ class LiveAvdCommandTests(unittest.TestCase):
         self.assertNotIn("456", formatted)
         self.assertNotIn("secret", formatted)
 
+    def test_framework_trace_summary_preserves_linkage_evidence_and_redacts_raw_log_data(self) -> None:
+        trace = """
+        am_create_activity: [0,12,com.android.contacts/.activities.ContactSelectionActivity]
+        wm_resume_activity: com.pacer.test.probe/.ProbeActivity
+        ActivityRecord{abc u0 com.android.contacts/.activities.ContactSelectionActivity t9}
+          mResultTo=ActivityRecord{def u0 com.pacer.test.probe/.ProbeActivity t9} mRequestCode=41
+          Intent { dat=content://private/secret/123456 }
+        """
+        logcat = [
+            "ActivityTaskManager: START cmp=com.android.contacts/.activities.ContactSelectionActivity "
+            "resultTo=ActivityRecord{def u0 com.pacer.test.probe/.ProbeActivity t9} requestCode=41 "
+            "dat=content://private/secret/123456"
+        ]
+
+        summary = live.format_framework_activity_trace(trace, logcat)
+
+        self.assertIn("events=am_create_activity,wm_resume_activity", summary)
+        self.assertIn("contacts=seen", summary)
+        self.assertIn("probe=seen", summary)
+        self.assertIn("resultTo=com.pacer.test.probe/com.pacer.test.probe.ProbeActivity", summary)
+        self.assertIn("requestCodes=41", summary)
+        self.assertNotIn("content://", summary)
+        self.assertNotIn("secret", summary)
+        self.assertNotIn("123456", summary)
+        self.assertNotIn("abc", summary)
+
+    def test_framework_trace_summary_marks_linkage_unavailable_when_not_observed(self) -> None:
+        summary = live.format_framework_activity_trace("no activity events", [])
+
+        self.assertEqual(
+            summary,
+            "FRAMEWORK_ACTIVITY_TRACE events=none;contacts=not-shown;probe=not-shown;"
+            "wrapper=not-shown;resultTo=not-shown;requestCodes=not-shown;logcatLines=0",
+        )
+
     def test_probe_launcher_context_is_preserved_and_rendered_safely(self) -> None:
         line = (
             "06-01 00:00:00.000 123 456 I PacerLaunchTrace: ACTIVITY_LAUNCH_TRACE "
