@@ -23,6 +23,9 @@ PROBE = "com.pacer.test.probe"
 SEEDER = "com.pacer.test.seeder"
 PICKER = "com.android.contacts"
 SNAPSHOT = "pacer-avd-synthetic-fixture-v1"
+TEST_PACKAGE = "com.android.contacts.test"
+PROBE_LAUNCHER = "com.pacer.test.pickerharness.ProbeLaunchActivity"
+EXPECTED_PICKER_CALLER = "com.pacer.test.probe/com.pacer.test.probe.ProbeActivity"
 
 
 def run(args: list[str], *, text: bool = True, timeout: int = 30, check: bool = True) -> str | bytes:
@@ -356,6 +359,103 @@ def encode_instrumentation_display_name(display_name: str) -> str:
     return encode_instrumentation_value(display_name)
 
 
+def launch_probe_wrapper_via_host_adb(avd: AVD) -> None:
+    output = str(avd.command(
+        "shell", "am", "start", "-W", "-n", f"{TEST_PACKAGE}/{PROBE_LAUNCHER}",
+        "--ez", "pacer_test_launch_probe", "true", timeout=30,
+    ))
+    if not re.search(r"(?m)^Status:\s*ok\s*$", output):
+        raise RuntimeError("host-ADB Variant B launcher did not report Status: ok")
+
+
+def caller_gate_rejected(output: str) -> bool:
+    if "contacts_trace_stage=caller_gate" not in output:
+        return False
+    caller = re.search(r"contacts_trace_actual_caller=([^\s\r\n]+)", output)
+    return caller is not None and caller.group(1) != EXPECTED_PICKER_CALLER
+
+
+def caller_gate_outcome(output: str) -> str:
+    if "contacts_trace_stage=caller_gate" not in output:
+        return "not-observed"
+    caller_line = next((line for line in output.splitlines() if "contacts_trace_actual_caller=" in line), "")
+    caller = caller_line.split("contacts_trace_actual_caller=", 1)[1].split()[0] if "=" in caller_line else ""
+    if not caller:
+        return "caller-unavailable"
+    if caller == EXPECTED_PICKER_CALLER:
+        return "caller-matched"
+    return "caller-missing" if caller == "none" else "caller-mismatch"
+
+
+def report_variant_traces(
+    avd: AVD,
+    output: str,
+    variant: str,
+    launch_trace_offset: int,
+    result_trace_offset: int,
+) -> tuple[int, int]:
+    callback_trace = [
+        line.strip() for line in output.splitlines()
+        if "INSTRUMENTATION_STATUS: contacts_trace_" in line
+    ]
+    if callback_trace:
+        print(f"Launch variant {variant}: Contacts pre-gate/callback trace:")
+        print(" | ".join(callback_trace))
+    launch_log = str(avd.command(
+        "shell", "logcat", "-d", "-s", "PacerLaunchTrace:I", check=False,
+    ))
+    source_lines = [line for line in launch_log.splitlines() if "PacerLaunchTrace:" in line]
+    for line in source_lines[launch_trace_offset:]:
+        formatted = format_activity_launch_trace(line)
+        if formatted is not None:
+            print(f"Launch variant {variant}: {formatted}")
+    result_log = str(avd.command(
+        "shell", "logcat", "-d", "-s", "PacerProbeResult:I", check=False,
+    ))
+    result_lines = [line for line in result_log.splitlines() if "PacerProbeResult:" in line]
+    for line in result_lines[result_trace_offset:]:
+        formatted = format_probe_result_trace(line)
+        if formatted is not None:
+            print(f"Launch variant {variant}: {formatted}")
+    return len(source_lines), len(result_lines)
+
+
+def run_picker_instrumentation(
+    avd: AVD,
+    *,
+    fixture_data_id: str,
+    display_name: str,
+    phone: str,
+    launch_variant: str,
+    framework_trace: FrameworkLaunchTraceCapture | None = None,
+) -> str:
+    if launch_variant not in ("instrumentation", "host-adb"):
+        raise ValueError("unknown hosted picker launch variant")
+    owns_trace = framework_trace is None
+    if framework_trace is None:
+        framework_trace = FrameworkLaunchTraceCapture(avd)
+    if owns_trace:
+        framework_trace.start()
+    try:
+        output = str(avd.command(
+            "shell", "am", "instrument", "-w",
+            "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",
+            "-e", "fixture_data_id", fixture_data_id,
+            "-e", "fixture_display_name_b64", encode_instrumentation_display_name(display_name),
+            "-e", "fixture_phone_b64", encode_instrumentation_value(phone),
+            "-e", "launch_variant", launch_variant,
+            f"{TEST_PACKAGE}/androidx.test.runner.AndroidJUnitRunner",
+            timeout=120,
+            check=False,
+        ))
+    finally:
+        if owns_trace:
+            trace_status, framework_summary = framework_trace.stop()
+            print(f"Launch variant {launch_variant}: {trace_status}")
+            print(f"Launch variant {launch_variant}: {framework_summary}")
+    return output
+
+
 def fixture_phone_number() -> str:
     source = (ROOT / "android/seeder/src/main/java/com/pacer/test/seeder/SeederActivity.java").read_text(encoding="utf-8")
     phone = re.search(r'FIXTURE_RECIPIENT_KEY[ ]*=[ ]*"([^"]+)"', source)
@@ -675,61 +775,62 @@ def main() -> int:
             print(sanitized_instrumentation_output(parser_test_output, binding, fixture_data_id))
             raise RuntimeError("bounded ActivityTaskManager parser fixture did not pass")
         print("ActivityTaskManager API 35 parser fixture passed.")
-        framework_trace = FrameworkLaunchTraceCapture(avd)
-        framework_trace.start()
+        launch_trace_count, result_trace_count = 0, 0
+
+        def run_variant(
+            variant: str,
+            framework_trace: FrameworkLaunchTraceCapture | None = None,
+        ) -> tuple[str, int, int]:
+            output = run_picker_instrumentation(
+                avd,
+                fixture_data_id=fixture_data_id,
+                display_name=binding.display_name,
+                phone=fixture_phone,
+                launch_variant=variant,
+                framework_trace=framework_trace,
+            )
+            next_launch_count, next_result_count = report_variant_traces(
+                avd, output, variant, launch_trace_count, result_trace_count,
+            )
+            gate_outcome = caller_gate_outcome(output)
+            print(f"LAUNCH_VARIANT_RESULT variant={variant};caller={gate_outcome};"
+                  f"instrumentation={'passed' if instrumentation_test_passed(output) else 'failed'}")
+            if not instrumentation_test_passed(output) and not caller_gate_rejected(output):
+                print(f"Launch variant {variant}: instrumentation failure (sanitized):")
+                print(sanitized_instrumentation_output(output, binding, fixture_data_id))
+                raise RuntimeError(f"launch variant {variant} failed before the caller gate")
+            return output, next_launch_count, next_result_count
+
+        baseline_output, launch_trace_count, result_trace_count = run_variant("instrumentation")
+        for package in (PICKER, PROBE, TEST_PACKAGE):
+            avd.command("shell", "am", "force-stop", package, timeout=15)
+        variant_b_trace = FrameworkLaunchTraceCapture(avd)
+        variant_b_trace.start()
         try:
-            harness_output = str(avd.command(
-                "shell", "am", "instrument", "-w",
-                "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",
-                "-e", "fixture_data_id", fixture_data_id,
-                "-e", "fixture_display_name_b64", encode_instrumentation_display_name(binding.display_name),
-                "-e", "fixture_phone_b64", encode_instrumentation_value(fixture_phone),
-                "com.android.contacts.test/androidx.test.runner.AndroidJUnitRunner",
-                timeout=120,
-                check=False,
-            ))
+            launch_probe_wrapper_via_host_adb(avd)
+            foreground_deadline = time.monotonic() + 30
+            while time.monotonic() < foreground_deadline:
+                try:
+                    if avd.foreground() == PICKER:
+                        break
+                except RuntimeError:
+                    pass
+                time.sleep(0.25)
+            else:
+                raise RuntimeError("host-ADB Variant B did not bring the pinned Contacts picker to foreground")
+
+            variant_b_output, launch_trace_count, result_trace_count = run_variant("host-adb", variant_b_trace)
         finally:
-            trace_status, framework_summary = framework_trace.stop()
-            print(trace_status)
-            print(framework_summary)
-        callback_trace = [
-            line.strip() for line in harness_output.splitlines()
-            if line.startswith("INSTRUMENTATION_STATUS: contacts_trace_")
-        ]
-        launch_log = str(avd.command(
-            "shell", "logcat", "-d", "-s", "PacerLaunchTrace:I", check=False,
-        ))
-        launch_trace = [
-            formatted for line in launch_log.splitlines()
-            if (formatted := format_activity_launch_trace(line)) is not None
-        ]
-        if launch_trace:
-            print("Activity launch-context trace (sanitized):")
-            print("\n".join(launch_trace))
-        if callback_trace:
-            print("Contacts process callback trace:")
-            print("\n".join(callback_trace))
-        if not instrumentation_test_passed(harness_output):
-            print("Instrumentation result (sanitized):")
-            print(sanitized_instrumentation_output(harness_output, binding, fixture_data_id))
-            for label, command in (
-                ("Registered instrumentation (sanitized):", ("shell", "pm", "list", "instrumentation")),
-                ("Instrumentation package path (sanitized):", (
-                    "shell", "pm", "path", "com.android.contacts.test")),
-                ("Installed instrumentation package (sanitized):", (
-                    "shell", "pm", "list", "packages", "com.android.contacts.test")),
-            ):
-                diagnostic = str(avd.command(*command, check=False))
-                print(label)
-                print(sanitized_instrumentation_output(diagnostic, binding, fixture_data_id))
-            crash_log = str(avd.command(
-                "shell", "logcat", "-d", "-t", "200", "-s",
-                "AndroidRuntime:E", "ActivityManager:E", check=False,
-            ))
-            if crash_log.strip():
-                print("Instrumentation crash log (sanitized):")
-                print(sanitized_instrumentation_output(crash_log, binding, fixture_data_id))
-            raise RuntimeError("in-process picker item-click instrumentation did not pass its bounded test")
+            trace_status, framework_summary = variant_b_trace.stop()
+            print(f"Launch variant host-adb: {trace_status}")
+            print(f"Launch variant host-adb: {framework_summary}")
+        print("LAUNCH_VARIANT_COMPARISON baseline=" + caller_gate_outcome(baseline_output)
+              + ";hostAdb=" + caller_gate_outcome(variant_b_output))
+        if caller_gate_rejected(variant_b_output):
+            raise RuntimeError("Variant B reached the unchanged caller gate without ProbeActivity as caller")
+        if not instrumentation_test_passed(variant_b_output):
+            raise RuntimeError("Variant B instrumentation did not complete the unchanged picker click path")
+
         deadline = time.monotonic() + 30
         foreground = ""
         frame = None

@@ -71,11 +71,16 @@ public final class PhonePickerItemClickTest {
                 normalizedExpectedPhone.matches("[2-9][0-9]{2}[2-9][0-9]{6}"));
 
         ActivityLifecycleMonitor lifecycleMonitor = ActivityLifecycleMonitorRegistry.getInstance();
-        Intent launcher = new Intent();
-        launcher.setClassName("com.android.contacts.test", PROBE_LAUNCHER);
-        launcher.putExtra("pacer_test_launch_probe", true);
-        launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        instrumentation.getContext().startActivity(launcher);
+        String launchVariant = arguments.getString("launch_variant", "instrumentation");
+        boolean launchByInstrumentation = "instrumentation".equals(launchVariant);
+        assertTrue("unknown launcher variant", launchByInstrumentation || "host-adb".equals(launchVariant));
+        if (launchByInstrumentation) {
+            Intent launcher = new Intent();
+            launcher.setClassName("com.android.contacts.test", PROBE_LAUNCHER);
+            launcher.putExtra("pacer_test_launch_probe", true);
+            launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            instrumentation.getContext().startActivity(launcher);
+        }
 
         final Activity[] pickerState = new Activity[1];
         final long resumeDeadline = android.os.SystemClock.elapsedRealtime() + LOAD_TIMEOUT_MILLIS;

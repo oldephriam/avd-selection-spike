@@ -217,6 +217,42 @@ class LiveAvdCommandTests(unittest.TestCase):
             "wrapper=not-shown;resultTo=not-shown;requestCodes=not-shown;logcatLines=0",
         )
 
+    def test_caller_gate_rejection_is_recognized_only_from_actual_gate_trace(self) -> None:
+        self.assertTrue(live.caller_gate_rejected(
+            "contacts_trace_stage=caller_gate\ncontacts_trace_actual_caller=none\n"))
+        self.assertFalse(live.caller_gate_rejected(
+            "contacts_trace_stage=caller_gate\n"
+            "contacts_trace_actual_caller=com.pacer.test.probe/com.pacer.test.probe.ProbeActivity\n"))
+        self.assertFalse(live.caller_gate_rejected("instrumentation failed before caller gate"))
+        self.assertEqual(live.caller_gate_outcome(
+            "contacts_trace_stage=caller_gate\ncontacts_trace_actual_caller=none\n"), "caller-missing")
+        self.assertEqual(live.caller_gate_outcome(
+            "contacts_trace_stage=caller_gate\n"
+            "contacts_trace_actual_caller=com.pacer.test.probe/com.pacer.test.probe.ProbeActivity\n"),
+            "caller-matched")
+
+    def test_host_adb_variant_starts_exported_wrapper_for_result_and_checks_launch_status(self) -> None:
+        class FakeAvd:
+            def __init__(self, output):
+                self.output = output
+                self.calls = []
+
+            def command(self, *args, **kwargs):
+                self.calls.append((args, kwargs))
+                return self.output
+
+        avd = FakeAvd("Starting: Intent { cmp=com.android.contacts.test/.ProbeLaunchActivity }\nStatus: ok\n")
+        live.launch_probe_wrapper_via_host_adb(avd)
+        args, kwargs = avd.calls[0]
+        self.assertEqual(args[:6], (
+            "shell", "am", "start", "-W", "-n",
+            "com.android.contacts.test/com.pacer.test.pickerharness.ProbeLaunchActivity",
+        ))
+        self.assertEqual(args[-2:], ("pacer_test_launch_probe", "true"))
+        self.assertEqual(kwargs["timeout"], 30)
+        with self.assertRaisesRegex(RuntimeError, "Status: ok"):
+            live.launch_probe_wrapper_via_host_adb(FakeAvd("Status: timeout\n"))
+
     def test_probe_launcher_context_is_preserved_and_rendered_safely(self) -> None:
         line = (
             "06-01 00:00:00.000 123 456 I PacerLaunchTrace: ACTIVITY_LAUNCH_TRACE "
