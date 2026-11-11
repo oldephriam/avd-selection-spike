@@ -23,12 +23,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitor;
@@ -54,8 +49,6 @@ public final class PhonePickerItemClickTest {
     private static final String PHONE_NUMBER_ARGUMENT = "fixture_phone_b64";
     private static final long LOAD_TIMEOUT_MILLIS = 30000;
     private static final int MAX_ACTIVITY_TASK_DUMP_BYTES = 65536;
-    private static final Pattern ACTIVITY_RECORD_PATTERN = Pattern.compile(
-            "ActivityRecord\\{[^}]*?\\bu\\d+\\s+([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)\\s+t(\\d+)");
 
     @Test
     public void exactPhoneDataRowUsesListViewPerformItemClick() throws Exception {
@@ -208,98 +201,7 @@ public final class PhonePickerItemClickTest {
     }
 
     private static String summarizeActivityTaskDump(String dump, boolean truncated) {
-        String[] lines = dump.split("\\r?\\n");
-        List<String> records = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        for (int index = 0; index < lines.length && records.size() < 12; index++) {
-            String line = lines[index];
-            Matcher record = ACTIVITY_RECORD_PATTERN.matcher(line);
-            if (!record.find() || line.contains("resultTo=")) {
-                continue;
-            }
-            String packageName = record.group(1);
-            String className = record.group(2);
-            String taskId = record.group(3);
-            String component = sanitizeActivityComponent(packageName, className);
-            if ("other".equals(component) || !seen.add(component + ";" + taskId)) {
-                continue;
-            }
-            StringBuilder block = new StringBuilder(line);
-            for (int next = index + 1; next < lines.length && next <= index + 24; next++) {
-                if (ACTIVITY_RECORD_PATTERN.matcher(lines[next]).find()
-                        && !lines[next].contains("resultTo=")) {
-                    break;
-                }
-                block.append('\n').append(lines[next]);
-            }
-            String recordText = block.toString();
-            Matcher launched = Pattern.compile("\\blaunchedFromPackage=([^\\s,]+)")
-                    .matcher(recordText);
-            String launchedPackage = launched.find() ? launched.group(1) : "not-shown";
-            if (!isKnownActivityPackage(launchedPackage) && !"not-shown".equals(launchedPackage)) {
-                launchedPackage = "other";
-            }
-            Matcher resultToMatch = Pattern.compile("\\bresultTo=([^\\r\\n,]+)")
-                    .matcher(recordText);
-            String resultTo = resultToMatch.find()
-                    ? sanitizeActivityReference(resultToMatch.group(1)) : "not-shown";
-            Matcher resultWhoMatch = Pattern.compile("\\bresultWho=([^\\s,]+)")
-                    .matcher(recordText);
-            String resultWho = "not-shown";
-            if (resultWhoMatch.find()) {
-                resultWho = "null".equalsIgnoreCase(resultWhoMatch.group(1))
-                        || "none".equalsIgnoreCase(resultWhoMatch.group(1)) ? "none" : "present";
-            }
-            Matcher requestCodeMatch = Pattern.compile("\\b(?:m?requestCode)=(-?\\d+)\\b", Pattern.CASE_INSENSITIVE)
-                    .matcher(recordText);
-            String requestCode = requestCodeMatch.find() ? requestCodeMatch.group(1) : "not-shown";
-            if (!"41".equals(requestCode) && !"73".equals(requestCode)
-                    && !"not-shown".equals(requestCode)) {
-                requestCode = "other";
-            }
-            records.add("ACTIVITY_TASK_RECORD component=" + component
-                    + ";taskId=" + taskId
-                    + ";launchedFromPackage=" + launchedPackage
-                    + ";resultTo=" + resultTo
-                    + ";resultWho=" + resultWho
-                    + ";requestCode=" + requestCode);
-        }
-        StringBuilder summary = new StringBuilder("ACTIVITY_TASK_SNAPSHOT records=")
-                .append(records.size()).append(";truncated=").append(truncated);
-        for (String record : records) {
-            summary.append("||").append(record);
-        }
-        return summary.toString();
-    }
-
-    private static String sanitizeActivityReference(String value) {
-        if (value.toLowerCase(java.util.Locale.ROOT).contains("null")) {
-            return "none";
-        }
-        Matcher record = ACTIVITY_RECORD_PATTERN.matcher(value);
-        if (!record.find()) {
-            return "other";
-        }
-        return sanitizeActivityComponent(record.group(1), record.group(2));
-    }
-
-    private static String sanitizeActivityComponent(String packageName, String className) {
-        if (className.startsWith(".")) {
-            className = packageName + className;
-        }
-        String component = packageName + "/" + className;
-        if ("com.android.contacts/com.android.contacts.activities.ContactSelectionActivity".equals(component)
-                || "com.pacer.test.probe/com.pacer.test.probe.ProbeActivity".equals(component)
-                || "com.android.contacts.test/com.pacer.test.pickerharness.ProbeLaunchActivity".equals(component)) {
-            return component;
-        }
-        return "other";
-    }
-
-    private static boolean isKnownActivityPackage(String packageName) {
-        return "com.android.contacts".equals(packageName)
-                || "com.pacer.test.probe".equals(packageName)
-                || "com.android.contacts.test".equals(packageName);
+        return ActivityTaskDumpFormatter.summarize(dump, truncated);
     }
 
     private static ClickOutcome tryClickExactRow(Activity picker, String expectedDataId,

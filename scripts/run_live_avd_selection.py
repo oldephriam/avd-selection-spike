@@ -529,6 +529,18 @@ def main() -> int:
             poll_interval_seconds=1,
         )
         enable_root_adb_for_instrumentation(avd)
+        parser_test_output = str(avd.command(
+            "shell", "am", "instrument", "-w",
+            "-e", "class", "com.pacer.test.pickerharness.ActivityTaskDumpParserTest",
+            "com.android.contacts.test/androidx.test.runner.AndroidJUnitRunner",
+            timeout=60,
+            check=False,
+        ))
+        if not instrumentation_test_passed(parser_test_output):
+            print("ActivityTaskManager API 35 parser fixture result (sanitized):")
+            print(sanitized_instrumentation_output(parser_test_output, binding, fixture_data_id))
+            raise RuntimeError("bounded ActivityTaskManager parser fixture did not pass")
+        print("ActivityTaskManager API 35 parser fixture passed.")
         harness_output = str(avd.command(
             "shell", "am", "instrument", "-w",
             "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",

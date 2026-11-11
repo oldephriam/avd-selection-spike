@@ -191,6 +191,26 @@ class AndroidContractTests(unittest.TestCase):
         workflow = (ROOT.parent / ".github/workflows/avd-selection-spike.yml").read_text(encoding="utf-8")
         self.assertIn(":pickerharness:assembleDebugAndroidTest", workflow)
 
+    def test_api35_activity_task_dump_parser_fixture_is_executed_by_hosted_runner(self) -> None:
+        parser = ROOT / "pickerharness/src/androidTest/java/com/pacer/test/pickerharness/ActivityTaskDumpFormatter.java"
+        parser_test = ROOT / "pickerharness/src/androidTest/java/com/pacer/test/pickerharness/ActivityTaskDumpParserTest.java"
+        self.assertTrue(parser.is_file(), "bounded ActivityTaskManager formatter is missing")
+        self.assertTrue(parser_test.is_file(), "API 35 ActivityTaskManager parser fixture test is missing")
+        parser_source = parser.read_text(encoding="utf-8")
+        parser_test_source = parser_test.read_text(encoding="utf-8")
+        self.assertIn("mResultTo", parser_source)
+        self.assertIn("mResultWho", parser_source)
+        self.assertIn("mRequestCode", parser_source)
+        self.assertIn("resultCode", parser_source)
+        self.assertIn("ContactSelectionActivity", parser_test_source)
+        self.assertIn("mResultTo=ActivityRecord", parser_test_source)
+        self.assertIn("mResultWho=null", parser_test_source)
+        self.assertIn("resultCode=41", parser_test_source)
+        self.assertIn("content://private/secret", parser_test_source)
+        self.assertIn("ACTIVITY_TASK_RECORD component=", parser_source)
+        self.assertIn("component=com.android.contacts/com.android.contacts.activities.ContactSelectionActivity", parser_test_source)
+        self.assertIn("ActivityTaskDumpParserTest", (ROOT.parent / "scripts/run_live_avd_selection.py").read_text(encoding="utf-8"))
+
     def test_seeder_has_only_write_contacts_permission_and_is_separate_package(self) -> None:
         manifest = self.manifest("seeder")
         build = (ROOT / "seeder" / "build.gradle.kts").read_text(encoding="utf-8")
