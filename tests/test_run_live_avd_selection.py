@@ -200,43 +200,6 @@ class LiveAvdCommandTests(unittest.TestCase):
         self.assertNotIn("123", formatted)
         self.assertNotIn("456", formatted)
 
-    def test_activity_task_dump_reports_only_target_result_records_and_redacts_intents(self) -> None:
-        dump = """TASK 9:com.pacer.test.probe id=9 userId=0
-  * Hist #2: ActivityRecord{a1 u0 com.android.contacts/.activities.ContactSelectionActivity t9}
-    launchedFromPackage=com.pacer.test.probe
-    resultTo=ActivityRecord{b2 u0 com.pacer.test.probe/.ProbeActivity t9}
-    resultWho=null
-    requestCode=41
-    Intent { act=android.intent.action.PICK dat=content://com.android.contacts/data/12345 }
-  * Hist #1: ActivityRecord{c3 u0 com.pacer.test.probe/.ProbeActivity t9}
-    launchedFromPackage=com.android.contacts.test
-    resultTo=ActivityRecord{d4 u0 com.android.contacts.test/com.pacer.test.pickerharness.ProbeLaunchActivity t9}
-    resultWho=null
-    requestCode=73
-    Intent { act=android.intent.action.PICK dat=content://private/secret }
-"""
-
-        summary = live.format_activity_task_dump(dump)
-
-        self.assertIn(
-            "component=com.android.contacts/com.android.contacts.activities.ContactSelectionActivity;"
-            "taskId=9;launchedFromPackage=com.pacer.test.probe;"
-            "resultTo=com.pacer.test.probe/com.pacer.test.probe.ProbeActivity;"
-            "resultWho=none;requestCode=41",
-            summary,
-        )
-        self.assertIn(
-            "component=com.pacer.test.probe/com.pacer.test.probe.ProbeActivity;"
-            "taskId=9;launchedFromPackage=com.android.contacts.test;"
-            "resultTo=com.android.contacts.test/com.pacer.test.pickerharness.ProbeLaunchActivity;"
-            "resultWho=none;requestCode=73",
-            summary,
-        )
-        self.assertNotIn("Intent", summary)
-        self.assertNotIn("content://", summary)
-        self.assertNotIn("12345", summary)
-        self.assertNotIn("secret", summary)
-
     def test_readback_status_classification_omits_fixture_values(self) -> None:
         self.assertEqual(live.readback_status("UNVERIFIED: picker returned RESULT_CANCELED"), "result_canceled")
         self.assertEqual(live.readback_status("UNVERIFIED: picker did not grant readable selection evidence"), "permission_denied")

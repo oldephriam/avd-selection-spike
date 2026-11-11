@@ -111,9 +111,7 @@ class AndroidContractTests(unittest.TestCase):
         runner_script = (ROOT.parent / "scripts/run_live_avd_selection.py").read_text(encoding="utf-8")
         self.assertIn('"PacerLaunchTrace:I"', runner_script)
         self.assertIn("ACTIVITY_LAUNCH_TRACE", runner_script)
-        self.assertIn('"dumpsys", "activity", "activities"', runner_script)
-        self.assertIn("timeout=10", runner_script)
-        self.assertIn("format_activity_task_dump", runner_script)
+
         harness = (ROOT / module / "src/androidTest/java/com/pacer/test/pickerharness/"
                    "PhonePickerItemClickTest.java").read_text(encoding="utf-8")
         self.assertIn("@RunWith(JUnit4.class)", harness)
@@ -138,6 +136,15 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn('"com.pacer.test.probe.ProbeActivity"', harness)
         self.assertIn('"contacts_trace_actual_caller"', harness)
         self.assertIn('"contacts_trace_launch_context"', harness)
+        self.assertIn('"contacts_trace_task_snapshot"', harness)
+        self.assertIn('"timeout 8 dumpsys activity activities"', harness)
+        self.assertIn("MAX_ACTIVITY_TASK_DUMP_BYTES", harness)
+        self.assertIn("summarizeActivityTaskDump", harness)
+        caller_gate = harness[harness.index("private static void assertProbeIsPickerCaller"):]
+        self.assertLess(
+            caller_gate.index("captureActivityTaskSnapshot(instrumentation)"),
+            caller_gate.index("fail-closed: Contacts picker must have ProbeActivity"),
+        )
         self.assertLess(
             harness.index("assertProbeIsPickerCaller(instrumentation, pickerState[0])"),
             harness.index("tryClickExactRow(resumedPicker"),

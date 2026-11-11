@@ -340,87 +340,6 @@ def format_activity_launch_trace(line: str) -> str | None:
     )
 
 
-def format_activity_task_dump(dump: str) -> str:
-    """Return only allowlisted ActivityRecord linkage fields, never raw dump lines."""
-    bounded_dump = str(dump)[:65536]
-    lines = bounded_dump.splitlines()[:1500]
-    record_pattern = re.compile(
-        r"ActivityRecord\{[^}]*?\bu\d+\s+([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)\s+t(\d+)"
-    )
-    components = {
-        "com.android.contacts/com.android.contacts.activities.ContactSelectionActivity",
-        "com.pacer.test.probe/com.pacer.test.probe.ProbeActivity",
-        "com.android.contacts.test/com.pacer.test.pickerharness.ProbeLaunchActivity",
-    }
-    packages = {"com.android.contacts", "com.pacer.test.probe", "com.android.contacts.test"}
-    records: list[str] = []
-    seen: set[tuple[str, str]] = set()
-
-    def component_in(value: str) -> str:
-        match = record_pattern.search(value)
-        if match:
-            package, activity_class, _ = match.groups()
-        else:
-            simple = re.search(r"\b([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)\b", value)
-            if not simple:
-                return "none" if "null" in value.casefold() else "other"
-            package, activity_class = simple.groups()
-        if activity_class.startswith("."):
-            activity_class = package + activity_class
-        component = package + "/" + activity_class
-        return component if component in components else "other"
-
-    for index, line in enumerate(lines):
-        record = record_pattern.search(line)
-        if not record or "resultTo=" in line:
-            continue
-        package, activity_class, task_id = record.groups()
-        if activity_class.startswith("."):
-            activity_class = package + activity_class
-        component = package + "/" + activity_class
-        key = (component, task_id)
-        if component not in components or key in seen:
-            continue
-        seen.add(key)
-        block = [line]
-        for following in lines[index + 1:index + 25]:
-            if record_pattern.search(following) and "resultTo=" not in following:
-                break
-            block.append(following)
-        text = "\n".join(block)
-        launched = re.search(r"\blaunchedFromPackage=([^\s,]+)", text)
-        launched_package = launched.group(1) if launched else "not-shown"
-        if launched_package not in packages and launched_package != "not-shown":
-            launched_package = "other"
-        result_match = re.search(r"\bresultTo=([^\n,]+)", text)
-        result_to = component_in(result_match.group(1)) if result_match else "not-shown"
-        result_who_match = re.search(r"\bresultWho=([^\s,]+)", text)
-        result_who = "not-shown"
-        if result_who_match:
-            result_who = "none" if result_who_match.group(1).casefold() in ("null", "none") else "present"
-        request_match = re.search(r"\b(?:m?requestCode)=(-?\d+)\b", text, re.I)
-        request_code = request_match.group(1) if request_match else "not-shown"
-        if request_code not in ("41", "73", "not-shown"):
-            request_code = "other"
-        records.append(
-            "ACTIVITY_TASK_RECORD component=" + component
-            + ";taskId=" + task_id
-            + ";launchedFromPackage=" + launched_package
-            + ";resultTo=" + result_to
-            + ";resultWho=" + result_who
-            + ";requestCode=" + request_code
-        )
-        if len(records) >= 12:
-            break
-    truncated = len(str(dump)) > len(bounded_dump) or len(str(dump).splitlines()) > len(lines)
-    heading = "ACTIVITY_TASK_SNAPSHOT records=" + str(len(records))
-    if truncated:
-        heading += ";truncated=true"
-    else:
-        heading += ";truncated=false"
-    return "\n".join([heading, *records])
-
-
 def format_probe_result_trace(line: str) -> str | None:
     marker = "PacerProbeResult:"
     if marker not in line:
@@ -640,16 +559,6 @@ def main() -> int:
         if not instrumentation_test_passed(harness_output):
             print("Instrumentation result (sanitized):")
             print(sanitized_instrumentation_output(harness_output, binding, fixture_data_id))
-            try:
-                activity_task_dump = str(avd.command(
-                    "shell", "dumpsys", "activity", "activities",
-                    timeout=10, check=False,
-                ))
-                task_snapshot = format_activity_task_dump(activity_task_dump)
-            except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
-                task_snapshot = "ACTIVITY_TASK_SNAPSHOT unavailable;cause=" + type(exc).__name__
-            print("ActivityTaskManager task/result snapshot (sanitized, bounded):")
-            print(task_snapshot)
             for label, command in (
                 ("Registered instrumentation (sanitized):", ("shell", "pm", "list", "instrumentation")),
                 ("Instrumentation package path (sanitized):", (
