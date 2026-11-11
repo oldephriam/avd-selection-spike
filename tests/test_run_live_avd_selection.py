@@ -253,6 +253,21 @@ class LiveAvdCommandTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Status: ok"):
             live.launch_probe_wrapper_via_host_adb(FakeAvd("Status: timeout\n"))
 
+    def test_host_adb_launch_waits_for_instrumentation_lifecycle_monitor(self) -> None:
+        class FakeAvd:
+            def __init__(self):
+                self.polls = 0
+
+            def command(self, *args, **kwargs):
+                self.polls += 1
+                return "LAUNCH_READY session=0123456789abcdef0123456789abcdef\n" if self.polls == 2 else ""
+
+        avd = FakeAvd()
+        live.wait_for_harness_ready(
+            avd, "0123456789abcdef0123456789abcdef", timeout_seconds=1, poll_interval_seconds=0,
+        )
+        self.assertEqual(avd.polls, 2)
+
     def test_probe_launcher_context_is_preserved_and_rendered_safely(self) -> None:
         line = (
             "06-01 00:00:00.000 123 456 I PacerLaunchTrace: ACTIVITY_LAUNCH_TRACE "

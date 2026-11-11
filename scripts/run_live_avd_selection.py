@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -368,6 +369,25 @@ def launch_probe_wrapper_via_host_adb(avd: AVD) -> None:
         raise RuntimeError("host-ADB Variant B launcher did not report Status: ok")
 
 
+def wait_for_harness_ready(
+    avd: AVD,
+    launch_session: str,
+    *,
+    timeout_seconds: float = 20,
+    poll_interval_seconds: float = 0.5,
+) -> None:
+    if not re.fullmatch(r"[0-9a-f]{32}", launch_session):
+        raise ValueError("host-ADB launch session must be a 32-character lowercase hex token")
+    deadline = time.monotonic() + timeout_seconds
+    marker = f"LAUNCH_READY session={launch_session}"
+    while time.monotonic() < deadline:
+        output = str(avd.command("shell", "logcat", "-d", "-s", "PacerHarnessReady:I", check=False))
+        if marker in output:
+            return
+        time.sleep(poll_interval_seconds)
+    raise RuntimeError("instrumentation lifecycle monitor did not become ready before host-ADB launch")
+
+
 def caller_gate_rejected(output: str) -> bool:
     if "contacts_trace_stage=caller_gate" not in output:
         return False
@@ -428,6 +448,7 @@ def run_picker_instrumentation(
     phone: str,
     launch_variant: str,
     framework_trace: FrameworkLaunchTraceCapture | None = None,
+    launch_session: str = "",
 ) -> str:
     if launch_variant not in ("instrumentation", "host-adb"):
         raise ValueError("unknown hosted picker launch variant")
@@ -444,6 +465,7 @@ def run_picker_instrumentation(
             "-e", "fixture_display_name_b64", encode_instrumentation_display_name(display_name),
             "-e", "fixture_phone_b64", encode_instrumentation_value(phone),
             "-e", "launch_variant", launch_variant,
+            "-e", "launch_session", launch_session,
             f"{TEST_PACKAGE}/androidx.test.runner.AndroidJUnitRunner",
             timeout=120,
             check=False,
@@ -780,15 +802,50 @@ def main() -> int:
         def run_variant(
             variant: str,
             framework_trace: FrameworkLaunchTraceCapture | None = None,
+            launch_wrapper_after_attach: bool = False,
         ) -> tuple[str, int, int]:
-            output = run_picker_instrumentation(
-                avd,
-                fixture_data_id=fixture_data_id,
-                display_name=binding.display_name,
-                phone=fixture_phone,
-                launch_variant=variant,
-                framework_trace=framework_trace,
-            )
+            launch_session = uuid.uuid4().hex if launch_wrapper_after_attach else ""
+
+            def execute_instrumentation() -> None:
+                try:
+                    async_result["output"] = run_picker_instrumentation(
+                        avd,
+                        fixture_data_id=fixture_data_id,
+                        display_name=binding.display_name,
+                        phone=fixture_phone,
+                        launch_variant=variant,
+                        framework_trace=framework_trace,
+                        launch_session=launch_session,
+                    )
+                except BaseException as failure:
+                    async_result["failure"] = failure
+
+            if launch_wrapper_after_attach:
+                async_result: dict[str, object] = {}
+                instrumentation_thread = threading.Thread(
+                    target=execute_instrumentation, name="host-adb-picker-instrumentation", daemon=True,
+                )
+                instrumentation_thread.start()
+                try:
+                    wait_for_harness_ready(avd, launch_session)
+                    launch_probe_wrapper_via_host_adb(avd)
+                finally:
+                    instrumentation_thread.join(timeout=40)
+                if instrumentation_thread.is_alive():
+                    raise RuntimeError("host-ADB instrumentation did not exit after the bounded launch wait")
+                failure = async_result.get("failure")
+                if isinstance(failure, BaseException):
+                    raise RuntimeError("host-ADB instrumentation runner failed") from failure
+                output = str(async_result.get("output", ""))
+            else:
+                output = run_picker_instrumentation(
+                    avd,
+                    fixture_data_id=fixture_data_id,
+                    display_name=binding.display_name,
+                    phone=fixture_phone,
+                    launch_variant=variant,
+                    framework_trace=framework_trace,
+                )
             next_launch_count, next_result_count = report_variant_traces(
                 avd, output, variant, launch_trace_count, result_trace_count,
             )
@@ -807,19 +864,9 @@ def main() -> int:
         variant_b_trace = FrameworkLaunchTraceCapture(avd)
         variant_b_trace.start()
         try:
-            launch_probe_wrapper_via_host_adb(avd)
-            foreground_deadline = time.monotonic() + 30
-            while time.monotonic() < foreground_deadline:
-                try:
-                    if avd.foreground() == PICKER:
-                        break
-                except RuntimeError:
-                    pass
-                time.sleep(0.25)
-            else:
-                raise RuntimeError("host-ADB Variant B did not bring the pinned Contacts picker to foreground")
-
-            variant_b_output, launch_trace_count, result_trace_count = run_variant("host-adb", variant_b_trace)
+            variant_b_output, launch_trace_count, result_trace_count = run_variant(
+                "host-adb", variant_b_trace, launch_wrapper_after_attach=True,
+            )
         finally:
             trace_status, framework_summary = variant_b_trace.stop()
             print(f"Launch variant host-adb: {trace_status}")

@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.util.Base64;
+import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListAdapter;
@@ -80,6 +81,10 @@ public final class PhonePickerItemClickTest {
             launcher.putExtra("pacer_test_launch_probe", true);
             launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             instrumentation.getContext().startActivity(launcher);
+        } else {
+            String launchSession = arguments.getString("launch_session", "");
+            assertTrue("host-ADB launch session is malformed", launchSession.matches("[0-9a-f]{32}"));
+            Log.i("PacerHarnessReady", "LAUNCH_READY session=" + launchSession);
         }
 
         final Activity[] pickerState = new Activity[1];
