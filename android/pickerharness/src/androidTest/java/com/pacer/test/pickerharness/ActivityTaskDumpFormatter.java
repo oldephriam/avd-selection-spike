@@ -18,7 +18,8 @@ final class ActivityTaskDumpFormatter {
     private static final Pattern LAUNCHED_FROM = Pattern.compile(
             "\\blaunchedFromPackage\\s*=\\s*([^\\s,]+)");
     private static final Pattern RESULT_TO = Pattern.compile(
-            "\\b(?:resultTo|mResultTo)\\s*=\\s*([^\\r\\n,]+)", Pattern.CASE_INSENSITIVE);
+            "\\b(?:resultTo|mResultTo)\\s*=\\s*(ActivityRecord\\{[^}]*\\}|[^\\s,]+)",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern RESULT_WHO = Pattern.compile(
             "\\b(?:resultWho|mResultWho)\\s*=\\s*([^\\s,]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern REQUEST_CODE = Pattern.compile(
