@@ -2,6 +2,7 @@ package com.pacer.test.probe;
 
 import android.app.Activity;
 import android.content.ContentResolver;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -70,11 +71,31 @@ public final class ProbeActivity extends Activity {
         showReadback("UNVERIFIED: awaiting new picker result");
         try {
             pickerButton.setEnabled(false);
+            traceActivityLaunch(picker, PICK_CONTACT_REQUEST);
             startActivityForResult(picker, PICK_CONTACT_REQUEST);
         } catch (RuntimeException error) {
             pickerButton.setEnabled(true);
             showReadback("UNVERIFIED: platform contact picker unavailable");
         }
+    }
+
+    private void traceActivityLaunch(Intent intent, int requestCode) {
+        ComponentName caller = getCallingActivity();
+        String callerName = caller == null ? "none" : caller.flattenToString();
+        Log.i("PacerLaunchTrace", "ACTIVITY_LAUNCH_TRACE stage=before_picker_launch"
+                + ";sourceComponent=" + getComponentName().flattenToString()
+                + ";targetComponent=implicit"
+                + ";targetAction=" + intent.getAction()
+                + ";taskId=" + getTaskId()
+                + ";isTaskRoot=" + isTaskRoot()
+                + ";callingActivity=" + callerName
+                + ";requestCode=" + requestCode
+                + ";launchIntentFlags=" + formatFlags(intent.getFlags())
+                + ";incomingIntentFlags=" + formatFlags(getIntent().getFlags()));
+    }
+
+    private static String formatFlags(int flags) {
+        return String.format(java.util.Locale.ROOT, "0x%08x", flags);
     }
 
     @Override

@@ -94,7 +94,23 @@ class AndroidContractTests(unittest.TestCase):
         launcher_source = (ROOT / module / "src/androidTest/java/com/pacer/test/pickerharness/"
                            "ProbeLaunchActivity.java").read_text(encoding="utf-8")
         self.assertIn("startActivityForResult(probe, PROBE_REQUEST_CODE)", launcher_source)
+        self.assertIn('Log.i("PacerLaunchTrace"', launcher_source)
+        self.assertIn('";taskId=" + getTaskId()', launcher_source)
+        self.assertIn('";isTaskRoot=" + isTaskRoot()', launcher_source)
+        self.assertIn('";callingActivity=" + callingActivityName()', launcher_source)
+        self.assertLess(launcher_source.index('Log.i("PacerLaunchTrace"'),
+                        launcher_source.index("startActivityForResult(probe, PROBE_REQUEST_CODE)"))
         self.assertNotIn("FLAG_ACTIVITY_NEW_TASK", launcher_source)
+        probe_source = self.source("probe", "ProbeActivity.java")
+        self.assertIn('Log.i("PacerLaunchTrace"', probe_source)
+        self.assertIn('";requestCode=" + requestCode', probe_source)
+        self.assertIn('";launchIntentFlags=" + formatFlags(intent.getFlags())', probe_source)
+        self.assertIn("getCallingActivity()", probe_source)
+        self.assertLess(probe_source.index("traceActivityLaunch(picker, PICK_CONTACT_REQUEST)"),
+                        probe_source.index("startActivityForResult(picker, PICK_CONTACT_REQUEST)"))
+        runner_script = (ROOT.parent / "scripts/run_live_avd_selection.py").read_text(encoding="utf-8")
+        self.assertIn('"PacerLaunchTrace:I"', runner_script)
+        self.assertIn("ACTIVITY_LAUNCH_TRACE", runner_script)
         harness = (ROOT / module / "src/androidTest/java/com/pacer/test/pickerharness/"
                    "PhonePickerItemClickTest.java").read_text(encoding="utf-8")
         self.assertIn("@RunWith(JUnit4.class)", harness)
@@ -115,6 +131,12 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn('getDeclaredField("mResultCode")', harness)
         self.assertIn('getDeclaredField("mResultData")', harness)
         self.assertIn("getCallingActivity()", harness)
+        self.assertIn("assertProbeIsPickerCaller(instrumentation, pickerState[0])", harness)
+        self.assertIn('"com.pacer.test.probe.ProbeActivity"', harness)
+        self.assertLess(
+            harness.index("assertProbeIsPickerCaller(instrumentation, pickerState[0])"),
+            harness.index("tryClickExactRow(resumedPicker"),
+        )
         self.assertIn("describeActivityLaunchContext(picker)", harness)
         self.assertIn("launchFlags{newTask=", harness)
         self.assertLess(

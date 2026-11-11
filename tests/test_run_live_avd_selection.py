@@ -157,6 +157,31 @@ class LiveAvdCommandTests(unittest.TestCase):
         self.assertNotIn("123", formatted)
         self.assertNotIn("456", formatted)
 
+    def test_activity_launch_trace_keeps_allowlisted_context_and_drops_untrusted_fields(self) -> None:
+        line = (
+            "06-01 00:00:00.000 123 456 I PacerLaunchTrace: ACTIVITY_LAUNCH_TRACE "
+            "stage=before_picker_launch;sourceComponent=com.pacer.test.probe/"
+            "com.pacer.test.probe.ProbeActivity;targetComponent=implicit;taskId=17;"
+            "isTaskRoot=false;callingActivity=com.pacer.test.pickerharness/"
+            "com.pacer.test.pickerharness.ProbeLaunchActivity;requestCode=41;"
+            "launchIntentFlags=0x00000000;incomingIntentFlags=0x10000000;secret=private"
+        )
+
+        formatted = live.format_activity_launch_trace(line)
+
+        self.assertEqual(
+            formatted,
+            "ACTIVITY_LAUNCH_TRACE stage=before_picker_launch;"
+            "sourceComponent=com.pacer.test.probe/com.pacer.test.probe.ProbeActivity;"
+            "targetComponent=implicit;taskId=17;isTaskRoot=false;"
+            "callingActivity=com.pacer.test.pickerharness/"
+            "com.pacer.test.pickerharness.ProbeLaunchActivity;requestCode=41;"
+            "launchIntentFlags=0x00000000;incomingIntentFlags=0x10000000",
+        )
+        self.assertNotIn("123", formatted)
+        self.assertNotIn("456", formatted)
+        self.assertNotIn("secret", formatted)
+
     def test_readback_status_classification_omits_fixture_values(self) -> None:
         self.assertEqual(live.readback_status("UNVERIFIED: picker returned RESULT_CANCELED"), "result_canceled")
         self.assertEqual(live.readback_status("UNVERIFIED: picker did not grant readable selection evidence"), "permission_denied")

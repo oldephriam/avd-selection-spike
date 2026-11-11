@@ -2,6 +2,7 @@ package com.pacer.test.pickerharness;
 
 import android.app.Activity;
 import android.app.Instrumentation;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -35,6 +36,8 @@ import static org.junit.Assert.assertTrue;
 @RunWith(JUnit4.class)
 public final class PhonePickerItemClickTest {
     private static final String PROBE_LAUNCHER = "com.pacer.test.pickerharness.ProbeLaunchActivity";
+    private static final String PROBE_PACKAGE = "com.pacer.test.probe";
+    private static final String PROBE_ACTIVITY = "com.pacer.test.probe.ProbeActivity";
     private static final String PICKER_ACTIVITY = "com.android.contacts.activities.ContactSelectionActivity";
     private static final String PHONE_DATA_ID_ARGUMENT = "fixture_data_id";
     private static final String DISPLAY_NAME_ARGUMENT = "fixture_display_name_b64";
@@ -81,6 +84,8 @@ public final class PhonePickerItemClickTest {
         assertEquals("unexpected package for observed picker", "com.android.contacts",
                 pickerState[0].getPackageName());
         assertEquals("unexpected picker activity", PICKER_ACTIVITY, pickerState[0].getClass().getName());
+
+        assertProbeIsPickerCaller(instrumentation, pickerState[0]);
 
         final ClickOutcome[] outcome = new ClickOutcome[1];
         final long loadDeadline = android.os.SystemClock.elapsedRealtime() + LOAD_TIMEOUT_MILLIS;
@@ -140,6 +145,24 @@ public final class PhonePickerItemClickTest {
             }
         }
         return null;
+    }
+
+    private static String describeComponent(ComponentName component) {
+        return component == null ? "none"
+                : component.getPackageName() + "/" + component.getClassName();
+    }
+
+    private static void assertProbeIsPickerCaller(Instrumentation instrumentation, Activity picker) {
+        final String[] pickerCaller = new String[1];
+        final String[] pickerLaunchContext = new String[1];
+        instrumentation.runOnMainSync(() -> {
+            pickerCaller[0] = describeComponent(picker.getCallingActivity());
+            pickerLaunchContext[0] = describeActivityLaunchContext(picker);
+        });
+        System.out.println("PICKER_CALLER_GATE expected=" + PROBE_PACKAGE + "/" + PROBE_ACTIVITY
+                + ";actual=" + pickerCaller[0] + ";" + pickerLaunchContext[0]);
+        assertEquals("fail-closed: Contacts picker must have ProbeActivity as its result caller",
+                PROBE_PACKAGE + "/" + PROBE_ACTIVITY, pickerCaller[0]);
     }
 
     private static ClickOutcome tryClickExactRow(Activity picker, String expectedDataId,

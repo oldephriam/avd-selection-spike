@@ -283,6 +283,63 @@ def fixture_phone_number() -> str:
     return phone.group(1)
 
 
+def format_activity_launch_trace(line: str) -> str | None:
+    marker = "PacerLaunchTrace:"
+    if marker not in line:
+        return None
+    message = line.split(marker, 1)[1].strip()
+    if not message.startswith("ACTIVITY_LAUNCH_TRACE "):
+        return None
+    fields = dict(re.findall(
+        r"([A-Za-z][A-Za-z0-9]*)=([^;\s]+)",
+        message.removeprefix("ACTIVITY_LAUNCH_TRACE "),
+    ))
+    components = {
+        "com.pacer.test.pickerharness/com.pacer.test.pickerharness.ProbeLaunchActivity",
+        "com.pacer.test.probe/com.pacer.test.probe.ProbeActivity",
+    }
+
+    def component_value(key: str, allow_implicit: bool = False) -> str:
+        value = fields.get(key, "")
+        if value in components or value == "none" or (allow_implicit and value == "implicit"):
+            return value
+        return "other" if value else "unknown"
+
+    def flag_value(key: str) -> str:
+        value = fields.get(key, "")
+        return value.lower() if re.fullmatch(r"0x[0-9a-fA-F]{1,8}", value) else "unknown"
+
+    stage = fields.get("stage", "")
+    if stage not in ("before_probe_launch", "before_picker_launch"):
+        stage = "other"
+    task_id = fields.get("taskId", "")
+    task_id = str(int(task_id)) if re.fullmatch(r"[0-9]{1,6}", task_id) else "unknown"
+    root_state = fields.get("isTaskRoot", "")
+    if root_state not in ("true", "false"):
+        root_state = "unknown"
+    expected_request = "73" if stage == "before_probe_launch" else "41"
+    request_code = fields.get("requestCode", "")
+    if request_code not in ("41", "73"):
+        request_code = "unknown"
+    elif request_code != expected_request:
+        request_code = "unexpected"
+    target_action = fields.get("targetAction", "none")
+    if target_action not in ("none", "android.intent.action.PICK"):
+        target_action = "other"
+    return (
+        "ACTIVITY_LAUNCH_TRACE stage=" + stage
+        + ";sourceComponent=" + component_value("sourceComponent")
+        + ";targetComponent=" + component_value("targetComponent", allow_implicit=True)
+        + (";targetAction=" + target_action if "targetAction" in fields else "")
+        + ";taskId=" + task_id
+        + ";isTaskRoot=" + root_state
+        + ";callingActivity=" + component_value("callingActivity")
+        + ";requestCode=" + request_code
+        + ";launchIntentFlags=" + flag_value("launchIntentFlags")
+        + ";incomingIntentFlags=" + flag_value("incomingIntentFlags")
+    )
+
+
 def format_probe_result_trace(line: str) -> str | None:
     marker = "PacerProbeResult:"
     if marker not in line:
@@ -486,6 +543,16 @@ def main() -> int:
             line.strip() for line in harness_output.splitlines()
             if line.startswith("INSTRUMENTATION_STATUS: contacts_trace_")
         ]
+        launch_log = str(avd.command(
+            "shell", "logcat", "-d", "-s", "PacerLaunchTrace:I", check=False,
+        ))
+        launch_trace = [
+            formatted for line in launch_log.splitlines()
+            if (formatted := format_activity_launch_trace(line)) is not None
+        ]
+        if launch_trace:
+            print("Activity launch-context trace (sanitized):")
+            print("\n".join(launch_trace))
         if callback_trace:
             print("Contacts process callback trace:")
             print("\n".join(callback_trace))

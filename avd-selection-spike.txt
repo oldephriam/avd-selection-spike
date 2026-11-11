@@ -266,7 +266,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/avd-logs"
           adb -s emulator-5554 logcat -d -v threadtime -t 3000 -s \
-            PacerProbeResult:I AndroidRuntime:E ActivityTaskManager:W ActivityManager:W \
+            PacerProbeResult:I PacerLaunchTrace:I AndroidRuntime:E ActivityTaskManager:W ActivityManager:W \
             > "$RUNNER_TEMP/avd-logs/failure-logcat.txt" 2>&1 || \
             echo 'Could not capture focused logcat; see live-selection.log for runner output.' \
               > "$RUNNER_TEMP/avd-logs/failure-logcat.txt"
