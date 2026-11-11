@@ -162,7 +162,7 @@ class LiveAvdCommandTests(unittest.TestCase):
             "06-01 00:00:00.000 123 456 I PacerLaunchTrace: ACTIVITY_LAUNCH_TRACE "
             "stage=before_picker_launch;sourceComponent=com.pacer.test.probe/"
             "com.pacer.test.probe.ProbeActivity;targetComponent=implicit;taskId=17;"
-            "isTaskRoot=false;callingActivity=com.pacer.test.pickerharness/"
+            "isTaskRoot=false;callingActivity=com.android.contacts.test/"
             "com.pacer.test.pickerharness.ProbeLaunchActivity;requestCode=41;"
             "launchIntentFlags=0x00000000;incomingIntentFlags=0x10000000;secret=private"
         )
@@ -174,13 +174,31 @@ class LiveAvdCommandTests(unittest.TestCase):
             "ACTIVITY_LAUNCH_TRACE stage=before_picker_launch;"
             "sourceComponent=com.pacer.test.probe/com.pacer.test.probe.ProbeActivity;"
             "targetComponent=implicit;taskId=17;isTaskRoot=false;"
-            "callingActivity=com.pacer.test.pickerharness/"
+            "callingActivity=com.android.contacts.test/"
             "com.pacer.test.pickerharness.ProbeLaunchActivity;requestCode=41;"
             "launchIntentFlags=0x00000000;incomingIntentFlags=0x10000000",
         )
         self.assertNotIn("123", formatted)
         self.assertNotIn("456", formatted)
         self.assertNotIn("secret", formatted)
+
+    def test_probe_launcher_context_is_preserved_and_rendered_safely(self) -> None:
+        line = (
+            "06-01 00:00:00.000 123 456 I PacerLaunchTrace: ACTIVITY_LAUNCH_TRACE "
+            "stage=before_probe_launch;sourceComponent=com.android.contacts.test/"
+            "com.pacer.test.pickerharness.ProbeLaunchActivity;targetComponent=com.pacer.test.probe/"
+            "com.pacer.test.probe.ProbeActivity;taskId=9;isTaskRoot=true;callingActivity=none;"
+            "requestCode=73;launchIntentFlags=0x00000000;incomingIntentFlags=0x10000000"
+        )
+
+        formatted = live.format_activity_launch_trace(line)
+
+        self.assertIsNotNone(formatted)
+        self.assertIn("sourceComponent=com.android.contacts.test/", formatted)
+        self.assertIn("targetComponent=com.pacer.test.probe/", formatted)
+        self.assertIn("requestCode=73", formatted)
+        self.assertNotIn("123", formatted)
+        self.assertNotIn("456", formatted)
 
     def test_readback_status_classification_omits_fixture_values(self) -> None:
         self.assertEqual(live.readback_status("UNVERIFIED: picker returned RESULT_CANCELED"), "result_canceled")

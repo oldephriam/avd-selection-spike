@@ -159,6 +159,12 @@ public final class PhonePickerItemClickTest {
             pickerCaller[0] = describeComponent(picker.getCallingActivity());
             pickerLaunchContext[0] = describeActivityLaunchContext(picker);
         });
+        Bundle callerTrace = new Bundle();
+        callerTrace.putString("contacts_trace_stage", "caller_gate");
+        callerTrace.putString("contacts_trace_expected_caller", PROBE_PACKAGE + "/" + PROBE_ACTIVITY);
+        callerTrace.putString("contacts_trace_actual_caller", pickerCaller[0]);
+        callerTrace.putString("contacts_trace_launch_context", pickerLaunchContext[0]);
+        instrumentation.sendStatus(0, callerTrace);
         System.out.println("PICKER_CALLER_GATE expected=" + PROBE_PACKAGE + "/" + PROBE_ACTIVITY
                 + ";actual=" + pickerCaller[0] + ";" + pickerLaunchContext[0]);
         assertEquals("fail-closed: Contacts picker must have ProbeActivity as its result caller",

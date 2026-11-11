@@ -133,6 +133,8 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn("getCallingActivity()", harness)
         self.assertIn("assertProbeIsPickerCaller(instrumentation, pickerState[0])", harness)
         self.assertIn('"com.pacer.test.probe.ProbeActivity"', harness)
+        self.assertIn('"contacts_trace_actual_caller"', harness)
+        self.assertIn('"contacts_trace_launch_context"', harness)
         self.assertLess(
             harness.index("assertProbeIsPickerCaller(instrumentation, pickerState[0])"),
             harness.index("tryClickExactRow(resumedPicker"),

@@ -295,7 +295,7 @@ def format_activity_launch_trace(line: str) -> str | None:
         message.removeprefix("ACTIVITY_LAUNCH_TRACE "),
     ))
     components = {
-        "com.pacer.test.pickerharness/com.pacer.test.pickerharness.ProbeLaunchActivity",
+        "com.android.contacts.test/com.pacer.test.pickerharness.ProbeLaunchActivity",
         "com.pacer.test.probe/com.pacer.test.probe.ProbeActivity",
     }
 
