@@ -268,6 +268,30 @@ class LiveAvdCommandTests(unittest.TestCase):
         )
         self.assertEqual(avd.polls, 2)
 
+    def test_instrumentation_omits_empty_launch_session_argument(self) -> None:
+        class FakeAvd:
+            def __init__(self):
+                self.args = None
+
+            def command(self, *args, **kwargs):
+                self.args = args
+                return "OK (1 test)"
+
+        class FakeTrace:
+            pass
+
+        avd = FakeAvd()
+        live.run_picker_instrumentation(
+            avd,
+            fixture_data_id="12",
+            display_name="Fixture",
+            phone="+12025550100",
+            launch_variant="instrumentation",
+            framework_trace=FakeTrace(),
+        )
+        self.assertIsNotNone(avd.args)
+        self.assertNotIn("launch_session", avd.args or ())
+
     def test_probe_launcher_context_is_preserved_and_rendered_safely(self) -> None:
         line = (
             "06-01 00:00:00.000 123 456 I PacerLaunchTrace: ACTIVITY_LAUNCH_TRACE "

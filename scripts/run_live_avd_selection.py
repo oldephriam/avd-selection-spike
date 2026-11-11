@@ -458,18 +458,18 @@ def run_picker_instrumentation(
     if owns_trace:
         framework_trace.start()
     try:
-        output = str(avd.command(
+        command_args = [
             "shell", "am", "instrument", "-w",
             "-e", "class", "com.pacer.test.pickerharness.PhonePickerItemClickTest",
             "-e", "fixture_data_id", fixture_data_id,
             "-e", "fixture_display_name_b64", encode_instrumentation_display_name(display_name),
             "-e", "fixture_phone_b64", encode_instrumentation_value(phone),
             "-e", "launch_variant", launch_variant,
-            "-e", "launch_session", launch_session,
-            f"{TEST_PACKAGE}/androidx.test.runner.AndroidJUnitRunner",
-            timeout=120,
-            check=False,
-        ))
+        ]
+        if launch_session:
+            command_args.extend(("-e", "launch_session", launch_session))
+        command_args.append(f"{TEST_PACKAGE}/androidx.test.runner.AndroidJUnitRunner")
+        output = str(avd.command(*command_args, timeout=120, check=False))
     finally:
         if owns_trace:
             trace_status, framework_summary = framework_trace.stop()
