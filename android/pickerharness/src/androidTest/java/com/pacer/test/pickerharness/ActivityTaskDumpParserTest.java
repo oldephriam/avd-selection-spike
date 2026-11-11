@@ -34,27 +34,28 @@ public final class ActivityTaskDumpParserTest {
         }
         expandedDump.append(api35Dump.substring(resultLine));
         String summary = ActivityTaskDumpFormatter.summarize(expandedDump.toString(), false);
+        System.out.println("ACTIVITY_TASK_PARSER_SUMMARY " + summary);
 
-        assertTrue(summary.contains("records=3;truncated=false"));
-        assertTrue(summary.contains(
+        assertTrue("API 35 record count: " + summary, summary.contains("records=3;truncated=false"));
+        assertTrue("Contacts result target/code: " + summary, summary.contains(
                 "component=com.android.contacts/com.android.contacts.activities.ContactSelectionActivity"
                         + ";taskId=9;launchedFromPackage=com.pacer.test.probe"
                         + ";resultTo=com.pacer.test.probe/com.pacer.test.probe.ProbeActivity"
                         + ";resultWho=none;requestCode=41"));
-        assertTrue(summary.contains(
+        assertTrue("Probe result target/code", summary.contains(
                 "component=com.pacer.test.probe/com.pacer.test.probe.ProbeActivity"
                         + ";taskId=9;launchedFromPackage=com.android.contacts.test"
                         + ";resultTo=com.android.contacts.test/com.pacer.test.pickerharness.ProbeLaunchActivity"
                         + ";resultWho=none;requestCode=73"));
-        assertTrue(summary.contains(
+        assertTrue("wrapper alias result target/code", summary.contains(
                 "component=com.android.contacts.test/com.pacer.test.pickerharness.ProbeLaunchActivity"
                         + ";taskId=9;launchedFromPackage=not-shown;resultTo=com.pacer.test.probe/com.pacer.test.probe.ProbeActivity"
                         + ";resultWho=none;requestCode=73"));
-        assertFalse(summary.contains("Intent"));
-        assertFalse(summary.contains("content://"));
-        assertFalse(summary.contains("secret"));
-        assertFalse(summary.contains("123456"));
-        assertFalse(summary.contains("unrelated.app"));
-        assertFalse(summary.contains("999"));
+        assertFalse("raw intent label escaped formatter", summary.contains("Intent"));
+        assertFalse("raw URI escaped formatter", summary.contains("content://"));
+        assertFalse("private fixture text escaped formatter", summary.contains("secret"));
+        assertFalse("private numeric identifier escaped formatter", summary.contains("123456"));
+        assertFalse("unrelated component escaped allowlist", summary.contains("unrelated.app"));
+        assertFalse("unrelated request code escaped allowlist", summary.contains("999"));
     }
 }

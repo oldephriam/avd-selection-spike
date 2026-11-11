@@ -207,6 +207,7 @@ class AndroidContractTests(unittest.TestCase):
         self.assertIn("mResultWho=null", parser_test_source)
         self.assertIn("resultCode=41", parser_test_source)
         self.assertIn("content://private/secret", parser_test_source)
+        self.assertIn("ACTIVITY_TASK_PARSER_SUMMARY", parser_test_source)
         self.assertIn("ACTIVITY_TASK_RECORD component=", parser_source)
         self.assertIn("component=com.android.contacts/com.android.contacts.activities.ContactSelectionActivity", parser_test_source)
         self.assertIn("ActivityTaskDumpParserTest", (ROOT.parent / "scripts/run_live_avd_selection.py").read_text(encoding="utf-8"))

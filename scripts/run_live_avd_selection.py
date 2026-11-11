@@ -538,6 +538,10 @@ def main() -> int:
         ))
         if not instrumentation_test_passed(parser_test_output):
             print("ActivityTaskManager API 35 parser fixture result (sanitized):")
+            for line in parser_test_output.splitlines():
+                marker = "ACTIVITY_TASK_PARSER_SUMMARY "
+                if marker in line:
+                    print(line[line.index(marker):])
             print(sanitized_instrumentation_output(parser_test_output, binding, fixture_data_id))
             raise RuntimeError("bounded ActivityTaskManager parser fixture did not pass")
         print("ActivityTaskManager API 35 parser fixture passed.")
